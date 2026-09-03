@@ -1,8 +1,4 @@
 # Proxmox VE Custom Integration for Home Assistant
-
-> [!NOTE]
-> This is a fork of [dougiteixeira/proxmoxve](https://github.com/dougiteixeira/proxmoxve), continued here since the original repository has been inactive for a while. All credit for the original integration goes to [@dougiteixeira](https://github.com/dougiteixeira) and its contributors.
-
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/5b5a8c5b-885b-4233-a858-2e78b97d8c74">
   <img src="https://github.com/dougiteixeira/proxmoxve/assets/31328123/dfec7426-852d-41ea-b6c1-9bfd8cd1e8a8">
