@@ -6,7 +6,7 @@ import dataclasses
 import datetime
 from typing import TYPE_CHECKING, Any
 
-from attr import asdict
+from attr import Attribute, asdict
 from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
@@ -24,6 +24,17 @@ TO_REDACT_CONFIG = {"host", "username", "password"}
 TO_REDACT_COORD: set[str] = set()
 TO_REDACT_API: set[str] = set()
 TO_REDACT_DATA = {"configuration_url"}
+
+
+def _exclude_registry_cache(attribute: Attribute, _value: Any) -> bool:
+    """
+    Drop the registry entries' internal `_cache` field.
+
+    It holds a pre-serialized storage/json representation of the whole
+    entry (e.g. `configuration_url` with the real host), which bypasses
+    key-based redaction since it's embedded as a plain string.
+    """
+    return attribute.name != "_cache"
 
 
 def _error_info(error: ResourceException) -> dict[str, str]:
@@ -223,9 +234,19 @@ async def async_get_config_entry_diagnostics(
                 state_dict = dict(state.as_dict())
                 state_dict.pop("context", None)
 
-            entities.append({"entry": asdict(entity_entry), "state": state_dict})
+            entities.append(
+                {
+                    "entry": asdict(entity_entry, filter=_exclude_registry_cache),
+                    "state": state_dict,
+                }
+            )
 
-        devices.append({"device": asdict(device), "entities": entities})
+        devices.append(
+            {
+                "device": asdict(device, filter=_exclude_registry_cache),
+                "entities": entities,
+            }
+        )
 
     proxmox_coordinators: dict[str, Any] = {}
     for coordinator_name, coordinator in coordinators.items():
