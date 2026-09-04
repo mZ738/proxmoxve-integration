@@ -75,11 +75,17 @@ class ProxmoxClient:
                 timeout=30,
             )
 
+        # One coordinator per node/QEMU/LXC/disk means many refreshes fire at
+        # the same time. With pool_block=False urllib3 opens extra connections
+        # beyond pool_maxsize and discards them on release, logging
+        # "Connection pool is full, discarding connection" each time. Blocking
+        # instead caps the concurrent connections at pool_maxsize and makes the
+        # surplus requests wait for a free one - no churn, no warning.
         adapter = HTTPAdapter(
             pool_connections=32,
             pool_maxsize=32,
             max_retries=0,
-            pool_block=False,
+            pool_block=True,
         )
 
         # proxmoxer exposes no public accessor for the underlying requests session.
