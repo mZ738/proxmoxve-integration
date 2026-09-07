@@ -1,3 +1,5 @@
+# Copyright (c) 2019-2026
+# SPDX-License-Identifier: MIT
 """Diagnostics support for Proxmox VE."""
 
 from __future__ import annotations

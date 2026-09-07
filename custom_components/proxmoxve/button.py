@@ -1,3 +1,5 @@
+# Copyright (c) 2019-2026
+# SPDX-License-Identifier: MIT
 """Button to set Proxmox VE data."""
 
 from __future__ import annotations
@@ -291,6 +293,7 @@ async def async_setup_entry(
 
 
 def create_button(
+    *,
     coordinator: DataUpdateCoordinator,
     info_device: DeviceInfo,
     description: ProxmoxButtonEntityDescription,
@@ -319,6 +322,7 @@ class ProxmoxButtonEntity(ProxmoxEntity, ButtonEntity):
 
     def __init__(
         self,
+        *,
         coordinator: DataUpdateCoordinator,
         info_device: DeviceInfo,
         description: ProxmoxButtonEntityDescription,

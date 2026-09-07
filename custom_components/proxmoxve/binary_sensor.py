@@ -1,3 +1,5 @@
+# Copyright (c) 2019-2026
+# SPDX-License-Identifier: MIT
 """Binary sensor to read Proxmox VE data."""
 
 from __future__ import annotations

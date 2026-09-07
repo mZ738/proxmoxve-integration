@@ -1,3 +1,5 @@
+# Copyright (c) 2019-2026
+# SPDX-License-Identifier: MIT
 """Models for Proxmox VE integration."""
 
 from __future__ import annotations

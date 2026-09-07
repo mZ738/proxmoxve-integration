@@ -1,3 +1,5 @@
+# Copyright (c) 2019-2026
+# SPDX-License-Identifier: MIT
 """Config Flow for ProxmoxVE."""
 
 from __future__ import annotations
@@ -797,7 +799,7 @@ class ProxmoxVEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             try:
                 self._proxmox_client = ProxmoxClient(
-                    host,
+                    host=host,
                     port=port,
                     user=user,
                     token_name=token_name,
@@ -961,7 +963,7 @@ class ProxmoxVEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if not errors:
                 try:
                     self._proxmox_client = ProxmoxClient(
-                        host,
+                        host=host,
                         port=port,
                         user=username,
                         token_name=token_name,

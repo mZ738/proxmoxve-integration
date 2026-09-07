@@ -1,3 +1,5 @@
+# Copyright (c) 2019-2026
+# SPDX-License-Identifier: MIT
 """Tests that localized strings stay consistent with the English reference."""
 
 import json

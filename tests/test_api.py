@@ -1,5 +1,8 @@
+# Copyright (c) 2019-2026
+# SPDX-License-Identifier: MIT
 """Tests for the Proxmox VE API helpers."""
 
+from functools import partial
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -41,13 +44,15 @@ async def test_post_api_command_unlock(
     entity = SimpleNamespace(hass=hass, config_entry=mock_config_entry)
 
     await hass.async_add_executor_job(
-        post_api_command,
-        entity,
-        proxmox_client,
-        api_category,
-        ProxmoxCommand.UNLOCK,
-        "pve",
-        100,
+        partial(
+            post_api_command,
+            entity,
+            proxmox_client=proxmox_client,
+            api_category=api_category,
+            command=ProxmoxCommand.UNLOCK,
+            node="pve",
+            vm_id=100,
+        )
     )
 
     proxmox.put.assert_called_once_with(expected_path, **expected_kwargs)
@@ -63,13 +68,15 @@ async def test_post_api_command_start_uses_post(hass: HomeAssistant) -> None:
     entity = SimpleNamespace(hass=hass, config_entry=mock_config_entry)
 
     await hass.async_add_executor_job(
-        post_api_command,
-        entity,
-        proxmox_client,
-        ProxmoxType.LXC,
-        ProxmoxCommand.START,
-        "pve",
-        100,
+        partial(
+            post_api_command,
+            entity,
+            proxmox_client=proxmox_client,
+            api_category=ProxmoxType.LXC,
+            command=ProxmoxCommand.START,
+            node="pve",
+            vm_id=100,
+        )
     )
 
     proxmox.post.assert_called_once_with("nodes/pve/lxc/100/status/start")
@@ -89,11 +96,13 @@ async def test_post_api_command_surfaces_non_403_error(hass: HomeAssistant) -> N
 
     with pytest.raises(HomeAssistantError):
         await hass.async_add_executor_job(
-            post_api_command,
-            entity,
-            proxmox_client,
-            ProxmoxType.LXC,
-            ProxmoxCommand.UNLOCK,
-            "pve",
-            100,
+            partial(
+                post_api_command,
+                entity,
+                proxmox_client=proxmox_client,
+                api_category=ProxmoxType.LXC,
+                command=ProxmoxCommand.UNLOCK,
+                node="pve",
+                vm_id=100,
+            )
         )
