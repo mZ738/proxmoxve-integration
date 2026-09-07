@@ -208,6 +208,9 @@
         },
         "cluster_quorate": {
           "name": "Quorate"
+        },
+        "ha_crm_master_stale": {
+          "name": "CRM master stale"
         }
       },
       "button": {

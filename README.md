@@ -92,7 +92,9 @@ These features let you interact with the Proxmox HA (High Availability) stack, g
 - **Cluster HA status sensors**: read-only sensors on the `Proxmox Cluster` device, from `GET /cluster/ha/status/current`:
   - `HA armed state` — `armed`, `standby`, `disarming` or `disarmed`, with the active `resource mode` (`freeze`/`ignore`) as an attribute. Arm/Disarm only *queue* a CRM command, so this is the only way to see whether the cluster actually reached the requested state; a disarm run passes through `disarming` until every LRM has released its watchdog. Requires `pve-ha-manager` 5.1.3 or newer — the release that added arm/disarm and the `fencing` status entry it reads; on older clusters the API omits the entry and the sensor is not created.
   - `Quorate` — binary sensor, off when the cluster has lost quorum.
-  - `CRM master` and `CRM master last seen` — which node runs the CRM and when it last updated its status (the API itself treats a timestamp older than 30 s as "dead"). The timestamp comes from the Proxmox side, so comparing it against the Home Assistant clock assumes both are in sync.
+  - `CRM master` — which node currently runs the CRM.
+  - `CRM master stale` — binary sensor, on when the CRM master has not refreshed its status for more than 30 s, the same threshold Proxmox itself uses to call a master dead. Proxmox only puts that verdict in a localized display string, so it is recomputed here from the structured timestamp — against the Home Assistant clock, which assumes your HA host and the cluster agree on the time.
+  - `CRM master last seen` — the raw timestamp behind the above. **Disabled by default**: the CRM rewrites it every few seconds, so it would record a new state on every poll; enable it if you need the exact value for debugging.
   - `HA resources` and `HA resources in error` — how many resources the HA stack tracks, and how many are currently in `error`, `fence` or `recovery`, with the affected service IDs as an attribute.
 
   These entities are created during setup from the first successful poll: if HA is configured on the cluster afterwards, reload the integration to pick up the new entities.

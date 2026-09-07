@@ -108,6 +108,14 @@ HA_SERVICE_ERROR_STATES: Final[frozenset[str]] = frozenset(
     {"error", "fence", "recovery"}
 )
 
+# How old the CRM master timestamp may get before the master counts as dead.
+# PVE::API2::HA::Status uses the same 30 s (`$tdiff > 30` -> "old timestamp -
+# dead?"), but only inside its localized display string, so the check is
+# repeated here on the structured timestamp. Proxmox compares against its own
+# clock; here it is the Home Assistant clock, so a host whose time is out of
+# sync with the cluster can report a false positive.
+HA_CRM_MASTER_DEAD_AFTER: Final[timedelta] = timedelta(seconds=30)
+
 
 def _parse_ha_enum(
     entry: dict[str, Any],
@@ -140,6 +148,7 @@ def parse_ha_status(entries: list[dict[str, Any]]) -> ProxmoxHAStatusData:
     quorate: bool | UndefinedType = UNDEFINED
     crm_master: str | UndefinedType = UNDEFINED
     crm_master_last_seen: datetime | UndefinedType = UNDEFINED
+    crm_master_stale: bool | UndefinedType = UNDEFINED
     resources_total = 0
     resources_error: list[dict[str, str]] = []
 
@@ -165,6 +174,11 @@ def parse_ha_status(entries: list[dict[str, Any]]) -> ProxmoxHAStatusData:
                             "Unusable timestamp '%s' in Proxmox HA master status",
                             timestamp,
                         )
+                    else:
+                        crm_master_stale = (
+                            dt_util.utcnow() - crm_master_last_seen
+                            > HA_CRM_MASTER_DEAD_AFTER
+                        )
             case "fencing":
                 armed_state = _parse_ha_enum(entry, "armed-state", HA_ARMED_STATES)
                 mode = _parse_ha_enum(entry, "resource_mode", HA_RESOURCE_MODES)
@@ -187,6 +201,7 @@ def parse_ha_status(entries: list[dict[str, Any]]) -> ProxmoxHAStatusData:
         quorate=quorate,
         crm_master=crm_master,
         crm_master_last_seen=crm_master_last_seen,
+        crm_master_stale=crm_master_stale,
         ha_resources_total=resources_total,
         ha_resources_error=len(resources_error),
         ha_resources_error_list=resources_error,

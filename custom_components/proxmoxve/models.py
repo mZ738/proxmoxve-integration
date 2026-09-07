@@ -173,6 +173,7 @@ class ProxmoxHAStatusData:
     quorate: bool | UndefinedType
     crm_master: str | UndefinedType
     crm_master_last_seen: datetime | UndefinedType
+    crm_master_stale: bool | UndefinedType
     ha_resources_total: int
     ha_resources_error: int
     ha_resources_error_list: list[dict[str, str]]

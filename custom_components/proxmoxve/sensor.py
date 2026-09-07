@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, Final
 
 import homeassistant.util.dt as dt_util
@@ -325,6 +325,10 @@ class ProxmoxSensorEntityDescription(ProxmoxEntityDescription, SensorEntityDescr
         None  # Set when the sensor applies to only QEMU or LXC, if None applies to both.
     )
     extra_attrs: list[str] | None = None
+    # For timestamps derived from a counter (e.g. a boot time computed from an
+    # uptime): keep reporting the previous value while the new one is within
+    # this margin of it, so rounding noise is not recorded as a state change.
+    stable_within: timedelta | None = None
 
 
 PROXMOX_SENSOR_DISK: Final[tuple[ProxmoxSensorEntityDescription, ...]] = (
@@ -547,6 +551,11 @@ PROXMOX_SENSOR_UPTIME: Final[tuple[ProxmoxSensorEntityDescription, ...]] = (
             dt_util.utcnow() - timedelta(seconds=x) if x > 0 else None
         ),
         device_class=SensorDeviceClass.TIMESTAMP,
+        # `utcnow() - uptime` lands a second or two off on every poll because
+        # the API reports whole seconds, which would otherwise make every node
+        # and guest record a new boot time once a minute. A real reboot moves
+        # the value by far more than this margin and still comes through.
+        stable_within=timedelta(minutes=1),
         translation_key="uptime",
     ),
 )
@@ -882,6 +891,11 @@ PROXMOX_SENSOR_HA_STATUS: Final[tuple[ProxmoxSensorEntityDescription, ...]] = (
         icon="mdi:clock-check-outline",
         device_class=SensorDeviceClass.TIMESTAMP,
         entity_category=EntityCategory.DIAGNOSTIC,
+        # The CRM rewrites this timestamp every few seconds, so the value
+        # differs on every poll and each poll would be recorded as a state
+        # change. The `CRM master stale` binary sensor covers the part that
+        # matters; this stays available for debugging, but off by default.
+        entity_registry_enabled_default=False,
         translation_key="ha_crm_master_last_seen",
     ),
     ProxmoxSensorEntityDescription(
@@ -1311,6 +1325,7 @@ class ProxmoxSensorEntity(ProxmoxEntity, SensorEntity):
 
         self._attr_device_info = info_device
         self.entity_description = description
+        self._stable_value: datetime | None = None
 
     @property
     def native_value(self) -> StateType:
@@ -1341,8 +1356,32 @@ class ProxmoxSensorEntity(ProxmoxEntity, SensorEntity):
             native_value = getattr(data, self.entity_description.key)
 
         if (conversion := self.entity_description.conversion_fn) is not None:
-            return conversion(native_value)
+            native_value = conversion(native_value)
 
+        return self._hold_steady(native_value)
+
+    def _hold_steady(self, native_value: Any) -> Any:
+        """
+        Suppress noise around an unchanged timestamp.
+
+        A boot time computed as `now - uptime` moves by a second or two on
+        every poll even while the machine keeps running, and each of those
+        writes a state change. Keep reporting the value already published
+        until the new one leaves the description's margin.
+        """
+        if (margin := self.entity_description.stable_within) is None:
+            return native_value
+
+        if not isinstance(native_value, datetime):
+            return native_value
+
+        if (
+            self._stable_value is not None
+            and abs(native_value - self._stable_value) <= margin
+        ):
+            return self._stable_value
+
+        self._stable_value = native_value
         return native_value
 
     @property

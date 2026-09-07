@@ -123,6 +123,18 @@ PROXMOX_BINARYSENSOR_HA_STATUS: Final[
         on_value=[True],
         translation_key="cluster_quorate",
     ),
+    # Carries the CRM master's liveness instead of a "last seen" timestamp:
+    # the CRM refreshes that timestamp every few seconds, so a timestamp
+    # sensor writes a new state on every poll, while this one only changes
+    # when the master actually goes missing.
+    ProxmoxBinarySensorEntityDescription(
+        key="crm_master_stale",
+        name="CRM master stale",
+        icon="mdi:crown-outline",
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        on_value=[True],
+        translation_key="ha_crm_master_stale",
+    ),
 )
 
 

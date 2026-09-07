@@ -112,6 +112,52 @@ def test_parse_ha_status() -> None:
     assert data.ha_resources_error_list == [
         {"sid": "ct:105", "node": "pve2", "crm_state": "error"}
     ]
+    # The fixture timestamp is far in the past, so the master reads as dead.
+    assert data.crm_master_stale is True
+
+
+def test_parse_ha_status_fresh_master_is_not_stale() -> None:
+    """Test a master that just refreshed its timestamp is not stale."""
+    entries = [
+        {**entry, "timestamp": dt_util.utcnow().timestamp() - 5}
+        if entry["type"] == "master"
+        else entry
+        for entry in STATUS_CURRENT
+    ]
+
+    assert parse_ha_status(entries).crm_master_stale is False
+
+
+def test_parse_ha_status_stale_master() -> None:
+    """Test a master past the 30 s Proxmox itself treats as dead."""
+    entries = [
+        {**entry, "timestamp": dt_util.utcnow().timestamp() - 31}
+        if entry["type"] == "master"
+        else entry
+        for entry in STATUS_CURRENT
+    ]
+
+    assert parse_ha_status(entries).crm_master_stale is True
+
+
+def test_parse_ha_status_unusable_timestamp_has_no_staleness() -> None:
+    """Test a timestamp that cannot be read yields no staleness at all."""
+    entries = [
+        {**entry, "timestamp": "not-a-timestamp"}
+        if entry["type"] == "master"
+        else entry
+        for entry in STATUS_CURRENT
+    ]
+
+    data = parse_ha_status(entries)
+
+    assert data.crm_master_last_seen is UNDEFINED
+    assert data.crm_master_stale is UNDEFINED
+
+
+def test_crm_master_last_seen_is_disabled_by_default() -> None:
+    """Test the constantly-changing timestamp is not created by default."""
+    assert _description("crm_master_last_seen").entity_registry_enabled_default is False
 
 
 def test_parse_ha_status_without_fencing_entry() -> None:
@@ -197,20 +243,33 @@ def test_resources_error_sensor_reports_zero() -> None:
     assert sensor.extra_state_attributes == {"ha_resources_error_list": []}
 
 
+def _binary_sensor(key: str, data: SimpleNamespace) -> ProxmoxBinarySensorEntity:
+    """Build an HA status binary sensor backed by the given coordinator data."""
+    description = next(
+        candidate
+        for candidate in PROXMOX_BINARYSENSOR_HA_STATUS
+        if candidate.key == key
+    )
+    coordinator = MagicMock()
+    coordinator.data = data
+    return ProxmoxBinarySensorEntity(
+        coordinator=coordinator,
+        unique_id=f"test_{key}",
+        info_device={},
+        description=description,
+    )
+
+
 def test_quorate_binary_sensor() -> None:
     """Test the quorate binary sensor follows the parsed quorum state."""
-    description = PROXMOX_BINARYSENSOR_HA_STATUS[0]
+    assert _binary_sensor("quorate", SimpleNamespace(quorate=True)).is_on is True
+    assert _binary_sensor("quorate", SimpleNamespace(quorate=False)).is_on is False
 
-    def build(*, quorate: bool) -> ProxmoxBinarySensorEntity:
-        coordinator = MagicMock()
-        coordinator.data = SimpleNamespace(quorate=quorate)
-        return ProxmoxBinarySensorEntity(
-            coordinator=coordinator,
-            unique_id="test_quorate",
-            info_device={},
-            description=description,
-        )
 
-    assert description.key == "quorate"
-    assert build(quorate=True).is_on is True
-    assert build(quorate=False).is_on is False
+def test_crm_master_stale_binary_sensor() -> None:
+    """Test the stale binary sensor reports a problem only when stale."""
+    stale = SimpleNamespace(crm_master_stale=True)
+    alive = SimpleNamespace(crm_master_stale=False)
+
+    assert _binary_sensor("crm_master_stale", stale).is_on is True
+    assert _binary_sensor("crm_master_stale", alive).is_on is False
