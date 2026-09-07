@@ -6,6 +6,8 @@ import dataclasses
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from homeassistant.helpers.typing import UndefinedType
 
 
@@ -151,3 +153,26 @@ class ProxmoxTaskData:
     failed_count: int
     recent_failures: list[dict[str, str | int]] | UndefinedType
     last_failure_time: int | UndefinedType
+
+
+@dataclasses.dataclass
+class ProxmoxHAStatusData:
+    """
+    Data parsed from the Proxmox API for the cluster HA stack.
+
+    Fields that the API may not report at all (an older pve-ha-manager
+    without arm/disarm support, or a cluster whose CRM has never run) are
+    UNDEFINED so the platforms can skip creating those entities, while
+    fields that are only exposed as state attributes use plain values -
+    the UNDEFINED sentinel is not JSON serializable.
+    """
+
+    type: str
+    armed_state: str | UndefinedType
+    resource_mode: str | None
+    quorate: bool | UndefinedType
+    crm_master: str | UndefinedType
+    crm_master_last_seen: datetime | UndefinedType
+    ha_resources_total: int
+    ha_resources_error: int
+    ha_resources_error_list: list[dict[str, str]]

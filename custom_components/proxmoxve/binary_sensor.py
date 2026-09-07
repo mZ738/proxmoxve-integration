@@ -113,6 +113,19 @@ PROXMOX_BINARYSENSOR_HA_MANAGED: Final[ProxmoxBinarySensorEntityDescription] = (
 )
 
 
+PROXMOX_BINARYSENSOR_HA_STATUS: Final[
+    tuple[ProxmoxBinarySensorEntityDescription, ...]
+] = (
+    ProxmoxBinarySensorEntityDescription(
+        key="quorate",
+        name="Quorate",
+        icon="mdi:check-network-outline",
+        on_value=[True],
+        translation_key="cluster_quorate",
+    ),
+)
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
@@ -122,6 +135,38 @@ async def async_setup_entry(
     async_add_entities(await async_setup_binary_sensors_nodes(hass, config_entry))
     async_add_entities(await async_setup_binary_sensors_qemu(hass, config_entry))
     async_add_entities(await async_setup_binary_sensors_lxc(hass, config_entry))
+    async_add_entities(await async_setup_binary_sensors_ha_status(hass, config_entry))
+
+
+async def async_setup_binary_sensors_ha_status(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+) -> list:
+    """Set up the cluster HA status binary sensors."""
+    coordinators = config_entry.runtime_data[COORDINATORS]
+
+    # Only present when the optional cluster HA administration credentials
+    # are configured and could be authenticated.
+    if (
+        coordinator := coordinators.get(f"{ProxmoxType.Proxmox}_ha_status")
+    ) is None or coordinator.data is None:
+        return []
+
+    return [
+        create_binary_sensor(
+            coordinator=coordinator,
+            info_device=device_info(
+                hass=hass,
+                config_entry=config_entry,
+                api_category=ProxmoxType.Proxmox,
+            ),
+            description=description,
+            resource_id="cluster",
+            config_entry=config_entry,
+        )
+        for description in PROXMOX_BINARYSENSOR_HA_STATUS
+        if getattr(coordinator.data, description.key, UNDEFINED) is not UNDEFINED
+    ]
 
 
 async def async_setup_binary_sensors_nodes(

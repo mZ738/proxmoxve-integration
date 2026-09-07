@@ -5,10 +5,11 @@ from __future__ import annotations
 import json
 import time
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
+import homeassistant.util.dt as dt_util
 from homeassistant.const import CONF_HOST, CONF_USERNAME
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers import device_registry as dr
@@ -41,6 +42,7 @@ from .const import (
 from .disk import disk_matches_id
 from .models import (
     ProxmoxDiskData,
+    ProxmoxHAStatusData,
     ProxmoxLXCData,
     ProxmoxNodeData,
     ProxmoxStorageData,
@@ -90,9 +92,111 @@ def _parse_sensors_dict(data: dict) -> dict[str, float]:
     return result
 
 
+# Values the Proxmox HA API documents for the "fencing" status entry
+# (PVE::API2::HA::Status). Anything else is treated as unknown rather than
+# passed on, so the enum sensor never reports a state outside its options.
+HA_ARMED_STATES: Final[frozenset[str]] = frozenset(
+    {"armed", "standby", "disarming", "disarmed"}
+)
+HA_RESOURCE_MODES: Final[frozenset[str]] = frozenset({"freeze", "ignore"})
+
+# CRM service states that mean an incident is in progress: the guest is
+# fenced, being recovered after a fence, or stuck in error. Read from
+# `crm_state` (the raw CRM state) rather than `state`, which is a verbose
+# display value the API rewrites to "ignore" while HA is disarmed.
+HA_SERVICE_ERROR_STATES: Final[frozenset[str]] = frozenset(
+    {"error", "fence", "recovery"}
+)
+
+
+def _parse_ha_enum(
+    entry: dict[str, Any],
+    key: str,
+    allowed: frozenset[str],
+) -> str | UndefinedType:
+    """Return an enum field of an HA status entry, or UNDEFINED if unusable."""
+    value = entry.get(key)
+    if value in allowed:
+        return value
+    if value is not None:
+        LOGGER.warning(
+            "Unknown value '%s' for Proxmox HA status field '%s', ignoring it",
+            value,
+            key,
+        )
+    return UNDEFINED
+
+
+def parse_ha_status(entries: list[dict[str, Any]]) -> ProxmoxHAStatusData:
+    """
+    Build the cluster HA status from `cluster/ha/status/current` entries.
+
+    Only the structured fields of each entry are read; the `status` field is
+    a localized display string ("node1 (active, watchdog active, <time>)")
+    and must not be parsed.
+    """
+    armed_state: str | UndefinedType = UNDEFINED
+    resource_mode: str | None = None
+    quorate: bool | UndefinedType = UNDEFINED
+    crm_master: str | UndefinedType = UNDEFINED
+    crm_master_last_seen: datetime | UndefinedType = UNDEFINED
+    resources_total = 0
+    resources_error: list[dict[str, str]] = []
+
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+
+        match entry.get("type"):
+            case "quorum":
+                # PVE serializes the boolean as 1/0 depending on version.
+                if (value := entry.get("quorate")) is not None:
+                    quorate = value in (True, 1, "1")
+            case "master":
+                if (node := entry.get("node")) is not None:
+                    crm_master = str(node)
+                if (timestamp := entry.get("timestamp")) is not None:
+                    try:
+                        crm_master_last_seen = dt_util.utc_from_timestamp(
+                            float(timestamp)
+                        )
+                    except (TypeError, ValueError, OverflowError, OSError):
+                        LOGGER.warning(
+                            "Unusable timestamp '%s' in Proxmox HA master status",
+                            timestamp,
+                        )
+            case "fencing":
+                armed_state = _parse_ha_enum(entry, "armed-state", HA_ARMED_STATES)
+                mode = _parse_ha_enum(entry, "resource_mode", HA_RESOURCE_MODES)
+                resource_mode = None if mode is UNDEFINED else str(mode)
+            case "service":
+                resources_total += 1
+                if (crm_state := entry.get("crm_state")) in HA_SERVICE_ERROR_STATES:
+                    resources_error.append(
+                        {
+                            "sid": str(entry.get("sid", "")),
+                            "node": str(entry.get("node", "")),
+                            "crm_state": str(crm_state),
+                        }
+                    )
+
+    return ProxmoxHAStatusData(
+        type=ProxmoxType.Proxmox,
+        armed_state=armed_state,
+        resource_mode=resource_mode,
+        quorate=quorate,
+        crm_master=crm_master,
+        crm_master_last_seen=crm_master_last_seen,
+        ha_resources_total=resources_total,
+        ha_resources_error=len(resources_error),
+        ha_resources_error_list=resources_error,
+    )
+
+
 class ProxmoxCoordinator(
     DataUpdateCoordinator[
         ProxmoxDiskData
+        | ProxmoxHAStatusData
         | ProxmoxLXCData
         | ProxmoxNodeData
         | ProxmoxStorageData
@@ -150,6 +254,59 @@ class ProxmoxHAResourcesCoordinator(DataUpdateCoordinator[set[str]]):
             for resource in (resources or [])
             if isinstance(resource, dict) and "sid" in resource
         }
+
+
+class ProxmoxHAStatusCoordinator(ProxmoxCoordinator):
+    """
+    Proxmox VE cluster HA status coordinator.
+
+    Cluster-wide (`Sys.Audit` on `/`), so it uses the optional HA-admin
+    client like ProxmoxHAResourcesCoordinator. It is kept separate from
+    that coordinator on purpose: `cluster/ha/status/current` also reports
+    services the CRM still tracks but that are no longer configured HA
+    resources, so deriving the "HA managed" set from it would keep those
+    sensors on after a resource is removed.
+    """
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        proxmox: ProxmoxAPI,
+    ) -> None:
+        """Initialize the Proxmox cluster HA status coordinator."""
+        super().__init__(
+            hass,
+            LOGGER,
+            name="proxmox_coordinator_ha_status",
+            update_interval=timedelta(seconds=UPDATE_INTERVAL),
+        )
+
+        self.hass = hass
+        self.config_entry: ConfigEntry = self.config_entry
+        self.proxmox = proxmox
+        self.resource_id = "ha_status"
+        self.api_category = ProxmoxType.Proxmox
+
+    async def _async_update_data(self) -> ProxmoxHAStatusData:
+        """Update the cluster HA status."""
+        api_status = await self.hass.async_add_executor_job(
+            poll_api,
+            self.hass,
+            self.config_entry,
+            self.proxmox,
+            "cluster/ha/status/current",
+            ProxmoxType.Proxmox,
+            self.resource_id,
+        )
+
+        # poll_api returns None when the HA-admin credentials lack Sys.Audit
+        # on `/` (a repair issue is raised there). Failing the update marks
+        # the entities unavailable instead of reporting a made-up status.
+        if api_status is None:
+            msg = "Cluster HA status is not available"
+            raise UpdateFailed(msg)
+
+        return parse_ha_status(api_status)
 
 
 class ProxmoxNodeCoordinator(ProxmoxCoordinator):

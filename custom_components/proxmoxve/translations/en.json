@@ -205,6 +205,9 @@
         },
         "ha_managed": {
           "name": "HA managed"
+        },
+        "cluster_quorate": {
+          "name": "Quorate"
         }
       },
       "button": {
@@ -297,6 +300,37 @@
               "name": "Guest file content"
             }
           }
+        },
+        "ha_armed_state": {
+          "name": "HA armed state",
+          "state": {
+            "armed": "Armed",
+            "standby": "Standby",
+            "disarming": "Disarming",
+            "disarmed": "Disarmed"
+          },
+          "state_attributes": {
+            "resource_mode": {
+              "name": "Resource mode"
+            }
+          }
+        },
+        "ha_crm_master": {
+          "name": "CRM master"
+        },
+        "ha_crm_master_last_seen": {
+          "name": "CRM master last seen"
+        },
+        "ha_resources_error": {
+          "name": "HA resources in error",
+          "state_attributes": {
+            "ha_resources_error_list": {
+              "name": "Resources in error"
+            }
+          }
+        },
+        "ha_resources_total": {
+          "name": "HA resources"
         },
         "life_left": {
           "name": "Life left"

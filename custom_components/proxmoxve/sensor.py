@@ -859,6 +859,51 @@ PROXMOX_SENSOR_TASKS: Final[tuple[ProxmoxSensorEntityDescription, ...]] = (
 )
 
 
+PROXMOX_SENSOR_HA_STATUS: Final[tuple[ProxmoxSensorEntityDescription, ...]] = (
+    ProxmoxSensorEntityDescription(
+        key="armed_state",
+        name="HA armed state",
+        icon="mdi:shield-half-full",
+        device_class=SensorDeviceClass.ENUM,
+        options=["armed", "standby", "disarming", "disarmed"],
+        extra_attrs=["resource_mode"],
+        translation_key="ha_armed_state",
+    ),
+    ProxmoxSensorEntityDescription(
+        key="crm_master",
+        name="CRM master",
+        icon="mdi:crown-outline",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        translation_key="ha_crm_master",
+    ),
+    ProxmoxSensorEntityDescription(
+        key="crm_master_last_seen",
+        name="CRM master last seen",
+        icon="mdi:clock-check-outline",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        translation_key="ha_crm_master_last_seen",
+    ),
+    ProxmoxSensorEntityDescription(
+        key="ha_resources_total",
+        name="HA resources",
+        icon="mdi:server",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=0,
+        translation_key="ha_resources_total",
+    ),
+    ProxmoxSensorEntityDescription(
+        key="ha_resources_error",
+        name="HA resources in error",
+        icon="mdi:alert-circle-outline",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=0,
+        extra_attrs=["ha_resources_error_list"],
+        translation_key="ha_resources_error",
+    ),
+)
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
@@ -871,6 +916,41 @@ async def async_setup_entry(
     async_add_entities(await async_setup_sensors_storages(hass, config_entry))
     async_add_entities(await async_setup_sensors_tasks(hass, config_entry))
     async_add_entities(await async_setup_hardware_sensors(hass, config_entry))
+    async_add_entities(await async_setup_sensors_ha_status(hass, config_entry))
+
+
+async def async_setup_sensors_ha_status(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+) -> list:
+    """Set up the cluster HA status sensors."""
+    coordinators = config_entry.runtime_data[COORDINATORS]
+
+    # Only present when the optional cluster HA administration credentials
+    # are configured and could be authenticated.
+    if (
+        coordinator := coordinators.get(f"{ProxmoxType.Proxmox}_ha_status")
+    ) is None or coordinator.data is None:
+        return []
+
+    return [
+        create_sensor(
+            coordinator=coordinator,
+            info_device=device_info(
+                hass=hass,
+                config_entry=config_entry,
+                api_category=ProxmoxType.Proxmox,
+            ),
+            description=description,
+            resource_id="cluster",
+            config_entry=config_entry,
+        )
+        for description in PROXMOX_SENSOR_HA_STATUS
+        # A field the cluster does not report at all (no fencing entry
+        # before pve-ha-manager 5.1.3, no CRM master before HA is
+        # configured) gets no entity rather than a permanently unknown one.
+        if getattr(coordinator.data, description.key, UNDEFINED) is not UNDEFINED
+    ]
 
 
 async def async_setup_sensors_nodes(

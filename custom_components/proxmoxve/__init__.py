@@ -71,6 +71,7 @@ from .const import (
 from .coordinator import (
     ProxmoxDiskCoordinator,
     ProxmoxHAResourcesCoordinator,
+    ProxmoxHAStatusCoordinator,
     ProxmoxLXCCoordinator,
     ProxmoxNodeCoordinator,
     ProxmoxQEMUCoordinator,
@@ -791,8 +792,8 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
         ):
             LOGGER.exception(
                 "Unable to authenticate with the optional cluster HA admin "
-                "credentials; the Arm/Disarm HA buttons and HA managed "
-                "sensors will not be created"
+                "credentials; the Arm/Disarm HA buttons, the HA managed "
+                "sensors and the cluster HA status sensors will not be created"
             )
         else:
             proxmox_ha_admin_client = candidate_client
@@ -808,6 +809,13 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
         )
         await ha_resources_coordinator.async_refresh()
         coordinators[f"{ProxmoxType.Proxmox}_ha_resources"] = ha_resources_coordinator
+
+        ha_status_coordinator = ProxmoxHAStatusCoordinator(
+            hass=hass,
+            proxmox=proxmox_ha_admin,
+        )
+        await ha_status_coordinator.async_refresh()
+        coordinators[f"{ProxmoxType.Proxmox}_ha_status"] = ha_status_coordinator
 
     config_entry.runtime_data = {
         PROXMOX_CLIENT: proxmox_client,
