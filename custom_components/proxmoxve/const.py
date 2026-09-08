@@ -69,6 +69,7 @@ class ProxmoxType(StrEnum):
     Certificate = "certificate"
     BackupInfo = "backup_info"
     Subscription = "subscription"
+    Replication = "replication"
 
 
 class ProxmoxCommand(StrEnum):

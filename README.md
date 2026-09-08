@@ -83,6 +83,17 @@ For QEMU virtual machines with the [QEMU Guest Agent](https://pve.proxmox.com/wi
 - Content is capped at 4 KiB per read; the sensor state is further truncated to 255 characters (Home Assistant's state length limit), with the full (capped) content available as the `guest_file_content` attribute.
 - QEMU only — LXC containers have no equivalent guest-agent file-read API.
 
+### Replication
+
+For nodes running ZFS replication, two entities per node, both **disabled by default** and only created when that node actually has replication jobs:
+
+- `Replication failing` — a problem binary sensor, on when any active job has failures, with the affected jobs (id, guest, target, failure count, error) as an attribute.
+- `Replication last sync` — the **oldest** successful sync across the node's active jobs. The oldest rather than the newest on purpose: the newest would hide a job that stopped replicating days ago, which is exactly the case worth seeing.
+
+Jobs somebody disabled are counted but never raise the alarm or hold back the timestamp.
+
+Proxmox filters this to guests the credentials may audit (`VM.Audit`), so no extra permissions are needed beyond what tracking those guests already requires.
+
 ### Subscription
 
 Each node gets a `Subscription` sensor — `active`, `expired`, `invalid`, `suspended`, `new` or `none` — with the level, product name and next due date as attributes. **Disabled by default**: most installations run without a subscription, where it reads "none" forever and is worth having only once there is one.
@@ -127,6 +138,26 @@ Only relevant if you run a Proxmox **cluster with HA-manager configured** — on
 
 > [!IMPORTANT]  
 > See the section on Proxmox user permissions [here](#proxmox-permissions).
+
+## Features I cannot test myself
+
+My own cluster does not use every feature this integration reads, so some
+code paths have only ever run against the Proxmox API definitions and
+invented test fixtures — never against a live setup. They are listed here
+honestly rather than presented as equally proven:
+
+| Feature | What is untested |
+|---|---|
+| **Replication** | Everything. I run no ZFS replication, so `nodes/{node}/replication` returns an empty list here. The field names come from `PVE/API2/Replication.pm`. |
+| **Subscription** | Only the `none` state is confirmed. I hold no subscription, so `active`, `expired`, `invalid` and `suspended` — and the level, product and due date attributes — have never been seen from a real response. |
+| **Certificate expiry** | Only the fallback path. No node here has a replaced certificate, so the `pveproxy-ssl.pem` branch has never been exercised against a live node. |
+| **Guests without backup** | Only the empty case. Everything here is covered by a backup job, so the sensor has only ever been seen reporting zero. |
+
+**If you run any of these, I would genuinely like to hear whether they work.**
+An issue saying "replication sensor shows the wrong thing" — ideally with the
+output of `pvesh get /nodes/<node>/replication --output-format json`, with
+anything sensitive removed — is more useful than it might feel, because I
+cannot produce that response myself.
 
 ## Install
 

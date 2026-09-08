@@ -80,6 +80,7 @@ from .coordinator import (
     ProxmoxLXCCoordinator,
     ProxmoxNodeCoordinator,
     ProxmoxQEMUCoordinator,
+    ProxmoxReplicationCoordinator,
     ProxmoxStorageCoordinator,
     ProxmoxSubscriptionCoordinator,
     ProxmoxTaskCoordinator,
@@ -634,6 +635,14 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
             coordinators[f"{ProxmoxType.Subscription}_{node}"] = (
                 coordinator_subscription
             )
+
+            coordinator_replication = ProxmoxReplicationCoordinator(
+                hass=hass,
+                proxmox=proxmox,
+                node_name=node,
+            )
+            await coordinator_replication.async_refresh()
+            coordinators[f"{ProxmoxType.Replication}_{node}"] = coordinator_replication
 
             if config_entry.options.get(CONF_TASKS_ENABLE, True):
                 coordinator_tasks = ProxmoxTaskCoordinator(

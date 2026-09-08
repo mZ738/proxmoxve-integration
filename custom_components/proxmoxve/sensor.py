@@ -896,6 +896,19 @@ PROXMOX_SENSOR_BACKUP_INFO: Final[tuple[ProxmoxSensorEntityDescription, ...]] = 
 )
 
 
+PROXMOX_SENSOR_REPLICATION: Final[tuple[ProxmoxSensorEntityDescription, ...]] = (
+    ProxmoxSensorEntityDescription(
+        key="oldest_sync",
+        name="Replication last sync",
+        icon="mdi:folder-sync-outline",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        translation_key="replication_last_sync",
+    ),
+)
+
+
 PROXMOX_SENSOR_SUBSCRIPTION: Final[tuple[ProxmoxSensorEntityDescription, ...]] = (
     ProxmoxSensorEntityDescription(
         key="status",
@@ -995,6 +1008,7 @@ async def async_setup_entry(
     async_add_entities(await async_setup_sensors_certificates(hass, config_entry))
     async_add_entities(await async_setup_sensors_backup_info(hass, config_entry))
     async_add_entities(await async_setup_sensors_subscription(hass, config_entry))
+    async_add_entities(await async_setup_sensors_replication(hass, config_entry))
 
 
 async def async_setup_sensors_ha_status(
@@ -1059,6 +1073,41 @@ async def async_setup_sensors_backup_info(
         )
         for description in PROXMOX_SENSOR_BACKUP_INFO
     ]
+
+
+async def async_setup_sensors_replication(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+) -> list:
+    """Set up the per-node replication sensors."""
+    coordinators = config_entry.runtime_data[COORDINATORS]
+    sensors = []
+
+    for node in config_entry.data[CONF_NODES]:
+        coordinator = coordinators.get(f"{ProxmoxType.Replication}_{node}")
+        # A node with no replication jobs gets no entity at all, rather than
+        # one that can only ever say "nothing to report".
+        if coordinator is None or coordinator.data is None or not coordinator.data.jobs:
+            continue
+
+        sensors.extend(
+            create_sensor(
+                coordinator=coordinator,
+                info_device=device_info(
+                    hass=hass,
+                    config_entry=config_entry,
+                    api_category=ProxmoxType.Node,
+                    node=node,
+                ),
+                description=description,
+                resource_id=f"{ProxmoxType.Replication}_{node}",
+                config_entry=config_entry,
+            )
+            for description in PROXMOX_SENSOR_REPLICATION
+            if getattr(coordinator.data, description.key, UNDEFINED) is not UNDEFINED
+        )
+
+    return sensors
 
 
 async def async_setup_sensors_subscription(

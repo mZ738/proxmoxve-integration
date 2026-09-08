@@ -235,3 +235,20 @@ class ProxmoxSubscriptionData:
     level: str | None
     product: str | None
     next_due: str | None
+
+
+@dataclasses.dataclass
+class ProxmoxReplicationData:
+    """
+    Data parsed from the Proxmox API for a node's replication jobs.
+
+    `failing_jobs` is exposed as a state attribute, so it holds plain values -
+    the UNDEFINED sentinel is not JSON serializable.
+    """
+
+    type: str
+    node: str
+    jobs: int
+    failing: bool
+    oldest_sync: datetime | UndefinedType
+    failing_jobs: list[dict[str, str | int]]

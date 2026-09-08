@@ -50,6 +50,7 @@ from .models import (
     ProxmoxHAStatusData,
     ProxmoxLXCData,
     ProxmoxNodeData,
+    ProxmoxReplicationData,
     ProxmoxStorageData,
     ProxmoxSubscriptionData,
     ProxmoxTaskData,
@@ -269,6 +270,60 @@ SUBSCRIPTION_STATES: Final[frozenset[str]] = frozenset(
 )
 
 
+def parse_replication(
+    entries: list[dict[str, Any]],
+    node_name: str,
+) -> ProxmoxReplicationData:
+    """
+    Build replication health from `nodes/{node}/replication` entries.
+
+    Disabled jobs are counted but never raise the alarm or hold back the
+    oldest sync: somebody turned them off on purpose.
+
+    The oldest successful sync across the active jobs is the useful one - it
+    says how far behind the furthest-behind target is, where the newest would
+    hide a job that stopped replicating days ago.
+    """
+    jobs = 0
+    failing_jobs: list[dict[str, str | int]] = []
+    sync_times: list[datetime] = []
+
+    for entry in entries:
+        if not isinstance(entry, dict) or "id" not in entry:
+            continue
+        jobs += 1
+        if entry.get("disable"):
+            continue
+
+        if (fail_count := entry.get("fail_count")) and isinstance(fail_count, int):
+            job: dict[str, str | int] = {"id": str(entry["id"]), "failures": fail_count}
+            for key, field in (("guest", "guest"), ("target", "target")):
+                if (value := entry.get(field)) is not None:
+                    job[key] = value if isinstance(value, int) else str(value)
+            if isinstance(error := entry.get("error"), str):
+                job["error"] = error
+            failing_jobs.append(job)
+
+        if (last_sync := entry.get("last_sync")) and isinstance(
+            last_sync, (int, float)
+        ):
+            try:
+                sync_times.append(dt_util.utc_from_timestamp(float(last_sync)))
+            except (TypeError, ValueError, OverflowError, OSError):
+                LOGGER.warning(
+                    "Unusable last_sync '%s' in Proxmox replication status", last_sync
+                )
+
+    return ProxmoxReplicationData(
+        type=ProxmoxType.Replication,
+        node=node_name,
+        jobs=jobs,
+        failing=bool(failing_jobs),
+        oldest_sync=min(sync_times) if sync_times else UNDEFINED,
+        failing_jobs=failing_jobs,
+    )
+
+
 def parse_subscription(
     api_status: dict[str, Any],
     node_name: str,
@@ -378,6 +433,7 @@ class ProxmoxCoordinator(
         | ProxmoxHAStatusData
         | ProxmoxLXCData
         | ProxmoxNodeData
+        | ProxmoxReplicationData
         | ProxmoxStorageData
         | ProxmoxSubscriptionData
         | ProxmoxTaskData
@@ -534,6 +590,50 @@ class ProxmoxBackupInfoCoordinator(ProxmoxCoordinator):
             raise UpdateFailed(msg)
 
         return parse_backup_info(api_status)
+
+
+class ProxmoxReplicationCoordinator(ProxmoxCoordinator):
+    """Proxmox VE node replication data update coordinator."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        proxmox: ProxmoxAPI,
+        node_name: str,
+    ) -> None:
+        """Initialize the Proxmox replication coordinator."""
+        super().__init__(
+            hass,
+            LOGGER,
+            name=f"proxmox_coordinator_replication_{node_name}",
+            update_interval=timedelta(seconds=UPDATE_INTERVAL),
+        )
+
+        self.hass = hass
+        self.config_entry: ConfigEntry = self.config_entry
+        self.proxmox = proxmox
+        self.node_name = node_name
+        self.resource_id = f"{ProxmoxType.Replication.capitalize()} {node_name}"
+
+    async def _async_update_data(self) -> ProxmoxReplicationData:
+        """Update the node's replication jobs."""
+        # Proxmox filters this to guests the credentials may audit, so the
+        # least-privilege client sees exactly the jobs it is entitled to.
+        api_status = await self.hass.async_add_executor_job(
+            poll_api,
+            self.hass,
+            self.config_entry,
+            self.proxmox,
+            f"nodes/{self.node_name}/replication",
+            ProxmoxType.Node,
+            self.node_name,
+        )
+
+        if api_status is None:
+            msg = f"Replication status for {self.node_name} is not available"
+            raise UpdateFailed(msg)
+
+        return parse_replication(api_status, self.node_name)
 
 
 class ProxmoxSubscriptionCoordinator(ProxmoxCoordinator):

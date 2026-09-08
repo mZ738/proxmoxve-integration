@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Any, Final
 
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
@@ -26,6 +26,8 @@ from .const import (
 from .entity import ProxmoxEntity, ProxmoxEntityDescription
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.device_registry import DeviceInfo
@@ -43,6 +45,7 @@ class ProxmoxBinarySensorEntityDescription(
 
     on_value: list | None = None
     inverted: bool | None = False
+    extra_attrs: list[str] | None = None
     api_category: ProxmoxType | None = (
         None  # Set when the sensor applies to only QEMU or LXC, if None applies to both.
     )
@@ -140,6 +143,22 @@ PROXMOX_BINARYSENSOR_HA_STATUS: Final[
 )
 
 
+PROXMOX_BINARYSENSOR_REPLICATION: Final[
+    tuple[ProxmoxBinarySensorEntityDescription, ...]
+] = (
+    ProxmoxBinarySensorEntityDescription(
+        key="failing",
+        name="Replication failing",
+        icon="mdi:folder-alert-outline",
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        on_value=[True],
+        entity_registry_enabled_default=False,
+        extra_attrs=["failing_jobs", "jobs"],
+        translation_key="replication_failing",
+    ),
+)
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
@@ -150,6 +169,7 @@ async def async_setup_entry(
     async_add_entities(await async_setup_binary_sensors_qemu(hass, config_entry))
     async_add_entities(await async_setup_binary_sensors_lxc(hass, config_entry))
     async_add_entities(await async_setup_binary_sensors_ha_status(hass, config_entry))
+    async_add_entities(await async_setup_binary_sensors_replication(hass, config_entry))
 
 
 async def async_setup_binary_sensors_ha_status(
@@ -181,6 +201,39 @@ async def async_setup_binary_sensors_ha_status(
         for description in PROXMOX_BINARYSENSOR_HA_STATUS
         if getattr(coordinator.data, description.key, UNDEFINED) is not UNDEFINED
     ]
+
+
+async def async_setup_binary_sensors_replication(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+) -> list:
+    """Set up the per-node replication binary sensors."""
+    coordinators = config_entry.runtime_data[COORDINATORS]
+    sensors = []
+
+    for node in config_entry.data[CONF_NODES]:
+        coordinator = coordinators.get(f"{ProxmoxType.Replication}_{node}")
+        # A node with no replication jobs gets no entity at all.
+        if coordinator is None or coordinator.data is None or not coordinator.data.jobs:
+            continue
+
+        sensors.extend(
+            create_binary_sensor(
+                coordinator=coordinator,
+                info_device=device_info(
+                    hass=hass,
+                    config_entry=config_entry,
+                    api_category=ProxmoxType.Node,
+                    node=node,
+                ),
+                description=description,
+                resource_id=f"{ProxmoxType.Replication}_{node}",
+                config_entry=config_entry,
+            )
+            for description in PROXMOX_BINARYSENSOR_REPLICATION
+        )
+
+    return sensors
 
 
 async def async_setup_binary_sensors_nodes(
@@ -454,6 +507,20 @@ class ProxmoxBinarySensorEntity(ProxmoxEntity, BinarySensorEntity):
     def available(self) -> bool:
         """Return sensor availability."""
         return super().available and self.coordinator.data is not None
+
+    @property
+    def extra_state_attributes(self) -> Mapping[str, Any] | None:
+        """Return the extra attributes of the binary sensor."""
+        if self.entity_description.extra_attrs is None:
+            return None
+
+        if (data := self.coordinator.data) is None:
+            return None
+
+        return {
+            attr: getattr(data, attr, False)
+            for attr in self.entity_description.extra_attrs
+        }
 
 
 class ProxmoxHAManagedBinarySensorEntity(ProxmoxEntity, BinarySensorEntity):

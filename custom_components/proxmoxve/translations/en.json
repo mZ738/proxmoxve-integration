@@ -206,6 +206,9 @@
         "ha_managed": {
           "name": "HA managed"
         },
+        "replication_failing": {
+          "name": "Replication failing"
+        },
         "cluster_quorate": {
           "name": "Quorate"
         },
@@ -323,6 +326,14 @@
           "state_attributes": {
             "guests": {
               "name": "Guests"
+            }
+          }
+        },
+        "replication_last_sync": {
+          "name": "Replication last sync",
+          "state_attributes": {
+            "jobs": {
+              "name": "Jobs"
             }
           }
         },
