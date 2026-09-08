@@ -39,6 +39,47 @@ REPLACED = {
 }
 
 
+# The three-entry shape a node with an ACME certificate actually returns,
+# from a live PVE 9 cluster - names and dates replaced. The order matters:
+# the API returns the root CA first and the replaced certificate last, so
+# picking "the first one" or "the last one" would both be wrong on some node.
+LIVE_WITH_ACME = [
+    {
+        "filename": "pve-root-ca.pem",
+        "notafter": 2_102_400_000,
+        "subject": "/CN=Example/O=Example Cluster Manager CA",
+        "issuer": "/CN=Example/O=Example Cluster Manager CA",
+    },
+    {
+        "filename": "pve-ssl.pem",
+        "notafter": 1_850_000_000,
+        "subject": "/CN=node.internal.invalid",
+        "issuer": "/CN=Example/O=Example Cluster Manager CA",
+    },
+    {
+        "filename": "pveproxy-ssl.pem",
+        "notafter": 1_796_000_000,
+        "subject": "/CN=node.example.invalid",
+        "issuer": "/C=US/O=Example Authority",
+    },
+]
+
+
+def test_a_real_node_with_a_replaced_certificate() -> None:
+    """
+    Test the shape a live node with an ACME certificate returns.
+
+    The replaced certificate expires soonest and is listed last, while the
+    cluster CA lasts ten years and comes first - so neither position nor
+    expiry can stand in for choosing the right one.
+    """
+    data = parse_certificates(LIVE_WITH_ACME, "node1")
+
+    assert data.filename == "pveproxy-ssl.pem"
+    assert data.expires.timestamp() == 1_796_000_000
+    assert data.issuer == "/C=US/O=Example Authority"
+
+
 def test_prefers_the_certificate_that_serves_the_api() -> None:
     """Test a replaced certificate wins over the one the cluster issued."""
     data = parse_certificates([ROOT_CA, CLUSTER_ISSUED, REPLACED], "node1")
