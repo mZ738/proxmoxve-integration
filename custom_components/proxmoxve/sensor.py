@@ -333,6 +333,19 @@ class ProxmoxSensorEntityDescription(ProxmoxEntityDescription, SensorEntityDescr
     stable_within: timedelta | None = None
 
 
+def percentage_or_unknown(value: float | UndefinedType | None) -> float | None:
+    """
+    Turn a 0..1 ratio into a percentage, keeping "unknown" unknown.
+
+    A sensor that reports 0% when it simply has no reading looks like a
+    measurement, which is worse than reporting nothing: 0% disk used and "I
+    cannot see inside this guest" are very different statements.
+    """
+    if value is None or value is UNDEFINED:
+        return None
+    return value * 100 if value > 0 else 0
+
+
 PROXMOX_SENSOR_DISK: Final[tuple[ProxmoxSensorEntityDescription, ...]] = (
     ProxmoxSensorEntityDescription(
         key="disk_free",
@@ -342,7 +355,7 @@ PROXMOX_SENSOR_DISK: Final[tuple[ProxmoxSensorEntityDescription, ...]] = (
         value_fn=lambda x: (
             (x.disk_total - x.disk_used)
             if (UNDEFINED not in (x.disk_total, x.disk_used))
-            else 0
+            else None
         ),
         device_class=SensorDeviceClass.DATA_SIZE,
         state_class=SensorStateClass.MEASUREMENT,
@@ -356,11 +369,11 @@ PROXMOX_SENSOR_DISK: Final[tuple[ProxmoxSensorEntityDescription, ...]] = (
         name="Disk free percentage",
         icon="mdi:harddisk",
         native_unit_of_measurement=PERCENTAGE,
-        conversion_fn=lambda x: (x * 100) if x != UNDEFINED and x > 0 else 0,
+        conversion_fn=percentage_or_unknown,
         value_fn=lambda x: (
             1 - (x.disk_used / x.disk_total)
             if (UNDEFINED not in (x.disk_used, x.disk_total) and x.disk_total > 0)
-            else 0
+            else None
         ),
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=1,
@@ -396,11 +409,11 @@ PROXMOX_SENSOR_DISK: Final[tuple[ProxmoxSensorEntityDescription, ...]] = (
         name="Disk used percentage",
         icon="mdi:harddisk",
         native_unit_of_measurement=PERCENTAGE,
-        conversion_fn=lambda x: (x * 100) if x != UNDEFINED and x > 0 else 0,
+        conversion_fn=percentage_or_unknown,
         value_fn=lambda x: (
             (x.disk_used / x.disk_total)
             if (UNDEFINED not in (x.disk_used, x.disk_total) and x.disk_total > 0)
-            else 0
+            else None
         ),
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=1,

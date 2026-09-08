@@ -137,6 +137,13 @@ def _parse_ha_enum(
     return UNDEFINED
 
 
+def _positive_or_undefined(value: Any) -> Any:
+    """Return a number only when it is above zero, else UNDEFINED."""
+    if isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0:
+        return value
+    return UNDEFINED
+
+
 def qemu_memory_used(api_status: dict[str, Any]) -> int | UndefinedType:
     """
     Return what a QEMU guest uses, preferring the guest's own figure.
@@ -774,7 +781,12 @@ class ProxmoxQEMUCoordinator(ProxmoxCoordinator):
             disk_used=(
                 guest_disk_used
                 if guest_disk_used is not UNDEFINED
-                else api_status.get("disk", UNDEFINED)
+                # From outside, Proxmox cannot see a VM's filesystem: `disk`
+                # reports 0 whenever the guest agent does not answer, which is
+                # "I cannot tell", not "nothing is used". Reporting it as a
+                # measurement produced a confident 0% for guests without a
+                # working agent - an OPNsense VM, for instance.
+                else _positive_or_undefined(api_status.get("disk", UNDEFINED))
             ),
         )
 
