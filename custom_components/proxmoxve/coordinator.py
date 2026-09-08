@@ -137,6 +137,38 @@ def _parse_ha_enum(
     return UNDEFINED
 
 
+def qemu_memory_used(api_status: dict[str, Any]) -> int | UndefinedType:
+    """
+    Return what a QEMU guest uses, preferring the guest's own figure.
+
+    `mem` only holds the guest's usage while its balloon driver reports
+    statistics. Without them Proxmox falls back to the host-side resident size
+    of the QEMU process, which carries emulator overhead and can exceed the
+    configured memory - that is how a "memory used percentage" above 100%
+    happens. Two responses from the same cluster show both shapes: a Linux
+    guest reports `ballooninfo.total_mem` and `free_mem` whose difference is
+    exactly `mem`, while a guest without a balloon driver reports neither and
+    gets `mem` equal to `memhost`.
+
+    So read the guest's own numbers when they are there, and fall back to
+    `mem` - which is then the only figure Proxmox itself has - when they are
+    not.
+    """
+    balloon = api_status.get("ballooninfo")
+    if isinstance(balloon, dict):
+        total = balloon.get("total_mem")
+        free = balloon.get("free_mem")
+        if (
+            isinstance(total, int)
+            and isinstance(free, int)
+            and not isinstance(total, bool)
+            and not isinstance(free, bool)
+            and total >= free >= 0
+        ):
+            return total - free
+    return api_status.get("mem", UNDEFINED)
+
+
 def parse_ha_status(entries: list[dict[str, Any]]) -> ProxmoxHAStatusData:
     """
     Build the cluster HA status from `cluster/ha/status/current` entries.
@@ -703,6 +735,17 @@ class ProxmoxQEMUCoordinator(ProxmoxCoordinator):
                 pass
 
         update_device_via(self, ProxmoxType.QEMU, node_name)
+
+        memory_total = api_status.get("maxmem", UNDEFINED)
+        memory_used = qemu_memory_used(api_status)
+        memory_free = (
+            # The host-side fallback can exceed the configured memory, and a
+            # negative number of free bytes would be nonsense.
+            max(memory_total - memory_used, 0)
+            if UNDEFINED not in (memory_total, memory_used)
+            else UNDEFINED
+        )
+
         return ProxmoxVMData(
             type=ProxmoxType.QEMU,
             node=node_name,
@@ -718,13 +761,9 @@ class ProxmoxQEMUCoordinator(ProxmoxCoordinator):
             health=api_status.get("qmpstatus", UNDEFINED),
             uptime=api_status.get("uptime", UNDEFINED),
             cpu=api_status.get("cpu", UNDEFINED),
-            memory_total=api_status.get("maxmem", UNDEFINED),
-            memory_used=api_status.get("mem", UNDEFINED),
-            memory_free=(
-                (api_status["maxmem"] - api_status["mem"])
-                if ("maxmem" in api_status and "mem" in api_status)
-                else UNDEFINED
-            ),
+            memory_total=memory_total,
+            memory_used=memory_used,
+            memory_free=memory_free,
             network_in=api_status.get("netin", UNDEFINED),
             network_out=api_status.get("netout", UNDEFINED),
             disk_total=(
