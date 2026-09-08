@@ -46,10 +46,10 @@ def test_a_gap_keeps_the_previous_readings() -> None:
     """
     Test one poll without readings does not blank the sensors.
 
-    PVE-mods writes the lm-sensors output to a file that the API handler then
-    reads, and the field arrives empty whenever that file is not there.
-    Reporting nothing puts a hole in the history where the truth is "not
-    this time".
+    PVE-mods collects on demand, so the file the API handler reads is only
+    there while something keeps asking for it. The field arrives empty
+    whenever a poll gets in first. Reporting nothing puts a hole in the
+    history where the truth is "not this time".
     """
     coordinator = _coordinator()
     coordinator._hold_last_sensors(READINGS, "raw")  # noqa: SLF001

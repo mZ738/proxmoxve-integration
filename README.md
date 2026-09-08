@@ -52,30 +52,20 @@ This modifies the Proxmox VE API to inject `sensors -j` output into the `GET /no
 
 #### When readings come and go
 
-PVE-mods v2 does this in two steps: a collector inside `pveproxy` runs `sensors`, enriches it with drive and CPU names, and writes the result to `/run/pveproxy/pve-mod/sensors.json`; the API handler then reads that file back. If the file is not there when it is read, the field arrives in the response **present but empty**, and every hardware sensor drops to *unknown*.
+PVE-mods v2 collects on demand rather than continuously. A worker started by `pveproxy` runs `sensors`, enriches the output with drive and CPU names, and writes it to `/run/pveproxy/pve-mod/sensors.json`; the API handler reads that file back when you ask for a node's status. After ten seconds without a request the worker stops its collectors and removes the whole directory again.
 
-That file lives on a tmpfs, in a directory that does not survive a `pveproxy` restart — installing a certificate is enough to take it away. PVE-mods creates that directory when you run its configuration wizard and not when it writes, so a node can lose its readings for good while `sensors -j` on the same host still works perfectly, and while the collector still logs that it wrote the file.
+So a poll that arrives while nothing is warm gets the field **present but empty**, and every hardware sensor on that node would drop to *unknown*. The data is there a second or two later, once that same request has woken the worker. This is how PVE-mods is meant to work — a missing directory is not a fault, and there is nothing to repair on the host.
 
-Re-running the PVE-mods configuration brings the readings back, but only until the next restart. To fix it for good, have the directory created on every start:
+The ten seconds are hard-wired: `collector_timeout` lives in the package's `PVE/PVEMod/Config.pm` and is not among the sections `pve-mod.conf` can override, so setting it there is accepted and silently ignored.
 
-```bash
-# /etc/systemd/system/pveproxy.service.d/pve-mod.conf
-[Service]
-ExecStartPre=/bin/mkdir -p /run/pveproxy/pve-mod
-ExecStartPre=/bin/chown www-data:www-data /run/pveproxy/pve-mod
-```
+The integration therefore keeps the previous readings for up to ten minutes when a poll brings none, which covers the gap without polling the API more often. Past ten minutes it reports nothing, because by then the data really is gone rather than late — PVE-mods removed, the module unloaded, `lm-sensors` broken.
+
+If your hardware sensors stay unknown for longer than that, check the source rather than the integration — ask twice, a few seconds apart, so the first request wakes the collector:
 
 ```bash
-systemctl daemon-reload
-systemctl restart pveproxy
-```
-
-The integration keeps the previous readings for up to ten minutes when a poll brings none, so a missed collection leaves no hole in the history. Past that it reports nothing, because by then the data really is gone rather than late — PVE-mods removed, the module unloaded, `lm-sensors` broken.
-
-If your hardware sensors go unknown for longer than that, check the source rather than the integration:
-
-```bash
-ls -l /run/pveproxy/pve-mod/sensors.json    # missing or empty means no readings to serve
+pvesh get /nodes/$(hostname)/status --output-format json | grep -c PveMod_JsonSensorInfo
+sleep 3
+ls -l /run/pveproxy/pve-mod/sensors.json
 journalctl -u pveproxy --since today | grep -i pve-mod
 ```
 
