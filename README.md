@@ -160,7 +160,6 @@ honestly rather than presented as equally proven:
 | **Replication** | Everything. I run no ZFS replication, so `nodes/{node}/replication` returns an empty list here. The field names come from `PVE/API2/Replication.pm`. |
 | **Subscription** | Only the `none` state is confirmed. I hold no subscription, so `active`, `expired`, `invalid` and `suspended` — and the level, product and due date attributes — have never been seen from a real response. |
 | **Certificate expiry** | Only the fallback path. No node here has a replaced certificate, so the `pveproxy-ssl.pem` branch has never been exercised against a live node. |
-| **Guests without backup** | Only the empty case. Everything here is covered by a backup job, so the sensor has only ever been seen reporting zero. |
 
 **If you run any of these, I would genuinely like to hear whether they work.**
 An issue saying "replication sensor shows the wrong thing" — ideally with the
