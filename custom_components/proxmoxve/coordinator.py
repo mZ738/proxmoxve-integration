@@ -45,6 +45,7 @@ from .const import (
 from .disk import disk_matches_id
 from .models import (
     ProxmoxBackupInfoData,
+    ProxmoxCephData,
     ProxmoxCertificateData,
     ProxmoxDiskData,
     ProxmoxHAStatusData,
@@ -270,6 +271,55 @@ SUBSCRIPTION_STATES: Final[frozenset[str]] = frozenset(
 )
 
 
+# Ceph's own health states, mapped to the values the enum sensor offers.
+# `cluster/ceph/status` hands through what `ceph -s` reports rather than a
+# schema Proxmox defines, so anything outside this set is treated as unknown.
+CEPH_HEALTH_STATES: Final[dict[str, str]] = {
+    "HEALTH_OK": "ok",
+    "HEALTH_WARN": "warning",
+    "HEALTH_ERR": "error",
+}
+
+
+def parse_ceph(api_status: dict[str, Any]) -> ProxmoxCephData:
+    """
+    Build Ceph health from `cluster/ceph/status`.
+
+    Only the health block is read. The response also carries the OSD, monitor
+    and placement group maps, which are a different question and a great deal
+    of data to put behind a sensor.
+    """
+    health_block = api_status.get("health")
+    health_block = health_block if isinstance(health_block, dict) else {}
+
+    raw = health_block.get("status")
+    health: str | UndefinedType = CEPH_HEALTH_STATES.get(raw, UNDEFINED)
+    if health is UNDEFINED and raw is not None:
+        LOGGER.warning("Unknown Ceph health status '%s', ignoring it", raw)
+
+    checks: list[dict[str, str]] = []
+    raw_checks = health_block.get("checks")
+    if isinstance(raw_checks, dict):
+        for name, check in raw_checks.items():
+            if not isinstance(check, dict):
+                continue
+            entry = {"check": str(name)}
+            if isinstance(severity := check.get("severity"), str):
+                entry["severity"] = severity
+            summary = check.get("summary")
+            if isinstance(summary, dict) and isinstance(
+                message := summary.get("message"), str
+            ):
+                entry["message"] = message
+            checks.append(entry)
+
+    return ProxmoxCephData(
+        type=ProxmoxType.Ceph,
+        health=health,
+        checks=checks,
+    )
+
+
 def parse_replication(
     entries: list[dict[str, Any]],
     node_name: str,
@@ -428,6 +478,7 @@ def parse_ha_status(entries: list[dict[str, Any]]) -> ProxmoxHAStatusData:
 class ProxmoxCoordinator(
     DataUpdateCoordinator[
         ProxmoxBackupInfoData
+        | ProxmoxCephData
         | ProxmoxCertificateData
         | ProxmoxDiskData
         | ProxmoxHAStatusData
@@ -678,6 +729,52 @@ class ProxmoxSubscriptionCoordinator(ProxmoxCoordinator):
             raise UpdateFailed(msg)
 
         return parse_subscription(api_status, self.node_name)
+
+
+class ProxmoxCephCoordinator(ProxmoxCoordinator):
+    """
+    Proxmox VE Ceph health coordinator.
+
+    Cluster-wide (`Sys.Audit` or `Datastore.Audit` on `/`), so it uses the
+    optional cluster credentials like the HA and backup coordinators.
+    """
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        proxmox: ProxmoxAPI,
+    ) -> None:
+        """Initialize the Proxmox Ceph coordinator."""
+        super().__init__(
+            hass,
+            LOGGER,
+            name="proxmox_coordinator_ceph",
+            update_interval=timedelta(seconds=UPDATE_INTERVAL),
+        )
+
+        self.hass = hass
+        self.config_entry: ConfigEntry = self.config_entry
+        self.proxmox = proxmox
+        self.resource_id = "ceph"
+        self.api_category = ProxmoxType.Proxmox
+
+    async def _async_update_data(self) -> ProxmoxCephData:
+        """Update the Ceph cluster health."""
+        api_status = await self.hass.async_add_executor_job(
+            poll_api,
+            self.hass,
+            self.config_entry,
+            self.proxmox,
+            "cluster/ceph/status",
+            ProxmoxType.Proxmox,
+            self.resource_id,
+        )
+
+        if not isinstance(api_status, dict):
+            msg = "Ceph status is not available"
+            raise UpdateFailed(msg)
+
+        return parse_ceph(api_status)
 
 
 class ProxmoxCertificateCoordinator(ProxmoxCoordinator):

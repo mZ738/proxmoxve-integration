@@ -307,6 +307,19 @@
             }
           }
         },
+        "ceph_health": {
+          "name": "Ceph health",
+          "state": {
+            "ok": "OK",
+            "warning": "Warning",
+            "error": "Error"
+          },
+          "state_attributes": {
+            "checks": {
+              "name": "Checks"
+            }
+          }
+        },
         "certificate_expires": {
           "name": "Certificate expires",
           "state_attributes": {

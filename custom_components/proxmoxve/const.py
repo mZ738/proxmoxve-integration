@@ -70,6 +70,7 @@ class ProxmoxType(StrEnum):
     BackupInfo = "backup_info"
     Subscription = "subscription"
     Replication = "replication"
+    Ceph = "ceph"
 
 
 class ProxmoxCommand(StrEnum):

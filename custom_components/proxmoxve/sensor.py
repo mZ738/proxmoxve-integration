@@ -896,6 +896,20 @@ PROXMOX_SENSOR_BACKUP_INFO: Final[tuple[ProxmoxSensorEntityDescription, ...]] = 
 )
 
 
+PROXMOX_SENSOR_CEPH: Final[tuple[ProxmoxSensorEntityDescription, ...]] = (
+    ProxmoxSensorEntityDescription(
+        key="health",
+        name="Ceph health",
+        icon="mdi:database-check-outline",
+        device_class=SensorDeviceClass.ENUM,
+        options=["ok", "warning", "error"],
+        entity_registry_enabled_default=False,
+        extra_attrs=["checks"],
+        translation_key="ceph_health",
+    ),
+)
+
+
 PROXMOX_SENSOR_REPLICATION: Final[tuple[ProxmoxSensorEntityDescription, ...]] = (
     ProxmoxSensorEntityDescription(
         key="oldest_sync",
@@ -1009,6 +1023,7 @@ async def async_setup_entry(
     async_add_entities(await async_setup_sensors_backup_info(hass, config_entry))
     async_add_entities(await async_setup_sensors_subscription(hass, config_entry))
     async_add_entities(await async_setup_sensors_replication(hass, config_entry))
+    async_add_entities(await async_setup_sensors_ceph(hass, config_entry))
 
 
 async def async_setup_sensors_ha_status(
@@ -1072,6 +1087,37 @@ async def async_setup_sensors_backup_info(
             config_entry=config_entry,
         )
         for description in PROXMOX_SENSOR_BACKUP_INFO
+    ]
+
+
+async def async_setup_sensors_ceph(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+) -> list:
+    """Set up the Ceph health sensor."""
+    coordinators = config_entry.runtime_data[COORDINATORS]
+
+    # Only present on a cluster that actually runs Ceph, and only when the
+    # optional cluster credentials are configured.
+    if (
+        coordinator := coordinators.get(f"{ProxmoxType.Proxmox}_ceph")
+    ) is None or coordinator.data is None:
+        return []
+
+    return [
+        create_sensor(
+            coordinator=coordinator,
+            info_device=device_info(
+                hass=hass,
+                config_entry=config_entry,
+                api_category=ProxmoxType.Proxmox,
+            ),
+            description=description,
+            resource_id="cluster",
+            config_entry=config_entry,
+        )
+        for description in PROXMOX_SENSOR_CEPH
+        if getattr(coordinator.data, description.key, UNDEFINED) is not UNDEFINED
     ]
 
 

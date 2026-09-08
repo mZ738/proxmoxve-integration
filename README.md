@@ -83,6 +83,14 @@ For QEMU virtual machines with the [QEMU Guest Agent](https://pve.proxmox.com/wi
 - Content is capped at 4 KiB per read; the sensor state is further truncated to 255 characters (Home Assistant's state length limit), with the full (capped) content available as the `guest_file_content` attribute.
 - QEMU only — LXC containers have no equivalent guest-agent file-read API.
 
+### Ceph health
+
+Clusters running Ceph get a `Ceph health` sensor on the `Proxmox Cluster` device — `ok`, `warning` or `error` — with the failing checks (name, severity, message) as an attribute. **Disabled by default.**
+
+Only the health block is read. The response also carries the monitor, OSD and placement group maps, which are a different question and a great deal of data to put behind a sensor.
+
+The integration probes `cluster/ceph/status` once during setup and simply does not create the coordinator when Ceph is absent, so clusters without it are not left with something that fails on every update. It needs `Sys.Audit` or `Datastore.Audit` on `/` — the optional cluster credentials already carry that.
+
 ### Replication
 
 For nodes running ZFS replication, two entities per node, both **disabled by default** and only created when that node actually has replication jobs:
@@ -148,6 +156,7 @@ honestly rather than presented as equally proven:
 
 | Feature | What is untested |
 |---|---|
+| **Ceph** | Everything. I run no Ceph, so the endpoint is absent here. The health values come from Ceph itself rather than a Proxmox schema, since `cluster/ceph/status` hands `ceph -s` through unchanged. |
 | **Replication** | Everything. I run no ZFS replication, so `nodes/{node}/replication` returns an empty list here. The field names come from `PVE/API2/Replication.pm`. |
 | **Subscription** | Only the `none` state is confirmed. I hold no subscription, so `active`, `expired`, `invalid` and `suspended` — and the level, product and due date attributes — have never been seen from a real response. |
 | **Certificate expiry** | Only the fallback path. No node here has a replaced certificate, so the `pveproxy-ssl.pem` branch has never been exercised against a live node. |

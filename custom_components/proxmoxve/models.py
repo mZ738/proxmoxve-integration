@@ -252,3 +252,17 @@ class ProxmoxReplicationData:
     failing: bool
     oldest_sync: datetime | UndefinedType
     failing_jobs: list[dict[str, str | int]]
+
+
+@dataclasses.dataclass
+class ProxmoxCephData:
+    """
+    Data parsed from the Proxmox API for a Ceph cluster's health.
+
+    `checks` is exposed as a state attribute, so it holds plain values - the
+    UNDEFINED sentinel is not JSON serializable.
+    """
+
+    type: str
+    health: str | UndefinedType
+    checks: list[dict[str, str]]

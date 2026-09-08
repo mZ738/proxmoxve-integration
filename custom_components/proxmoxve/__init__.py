@@ -73,6 +73,7 @@ from .const import (
 )
 from .coordinator import (
     ProxmoxBackupInfoCoordinator,
+    ProxmoxCephCoordinator,
     ProxmoxCertificateCoordinator,
     ProxmoxDiskCoordinator,
     ProxmoxHAResourcesCoordinator,
@@ -889,6 +890,35 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
         )
         await backup_info_coordinator.async_refresh()
         coordinators[f"{ProxmoxType.Proxmox}_backup_info"] = backup_info_coordinator
+
+        # Most clusters run no Ceph, where this endpoint simply fails. Probing
+        # once keeps a permanently failing coordinator - and its error every
+        # update - off the majority of installations.
+        try:
+            ceph_available = (
+                await hass.async_add_executor_job(
+                    get_api, proxmox_ha_admin, "cluster/ceph/status"
+                )
+                is not None
+            )
+        except (
+            AuthenticationError,
+            SSLError,
+            ConnectTimeout,
+            RetryError,
+            connError,
+            ResourceException,
+        ):
+            ceph_available = False
+            LOGGER.debug("No Ceph cluster found, skipping its sensor")
+
+        if ceph_available:
+            ceph_coordinator = ProxmoxCephCoordinator(
+                hass=hass,
+                proxmox=proxmox_ha_admin,
+            )
+            await ceph_coordinator.async_refresh()
+            coordinators[f"{ProxmoxType.Proxmox}_ceph"] = ceph_coordinator
 
     config_entry.runtime_data = {
         PROXMOX_CLIENT: proxmox_client,
