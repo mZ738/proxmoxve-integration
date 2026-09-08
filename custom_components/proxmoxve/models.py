@@ -200,3 +200,17 @@ class ProxmoxCertificateData:
     filename: str | None
     subject: str | None
     issuer: str | None
+
+
+@dataclasses.dataclass
+class ProxmoxBackupInfoData:
+    """
+    Data parsed from the Proxmox API about backup coverage.
+
+    `guests` is exposed as a state attribute, so it holds plain values: the
+    UNDEFINED sentinel is not JSON serializable.
+    """
+
+    type: str
+    guests_without_backup: int
+    guests: list[dict[str, str | int]]

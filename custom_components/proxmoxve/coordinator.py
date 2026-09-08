@@ -32,6 +32,7 @@ from requests.exceptions import (
 
 from .api import get_api
 from .const import (
+    BACKUP_INFO_UPDATE_INTERVAL,
     CERTIFICATE_UPDATE_INTERVAL,
     CONF_GUEST_FILE_PATH,
     CONF_HA_ADMIN_USERNAME,
@@ -44,6 +45,7 @@ from .const import (
 )
 from .disk import disk_matches_id
 from .models import (
+    ProxmoxBackupInfoData,
     ProxmoxCertificateData,
     ProxmoxDiskData,
     ProxmoxHAStatusData,
@@ -231,6 +233,34 @@ def parse_certificates(
     )
 
 
+def parse_backup_info(entries: list[dict[str, Any]]) -> ProxmoxBackupInfoData:
+    """
+    Build backup coverage from `cluster/backup-info/not-backed-up` entries.
+
+    The endpoint lists every guest that no backup job covers, so an empty
+    response is the good case. Proxmox already filters it to guests the
+    credentials may see, which means the count is "not backed up, as far as
+    this user can tell" rather than a cluster-wide truth.
+    """
+    guests: list[dict[str, str | int]] = []
+
+    for entry in entries:
+        if not isinstance(entry, dict) or "vmid" not in entry:
+            continue
+        guest: dict[str, str | int] = {"vmid": entry["vmid"]}
+        if isinstance(entry.get("type"), str):
+            guest["type"] = entry["type"]
+        if isinstance(entry.get("name"), str):
+            guest["name"] = entry["name"]
+        guests.append(guest)
+
+    return ProxmoxBackupInfoData(
+        type=ProxmoxType.BackupInfo,
+        guests_without_backup=len(guests),
+        guests=guests,
+    )
+
+
 def parse_ha_status(entries: list[dict[str, Any]]) -> ProxmoxHAStatusData:
     """
     Build the cluster HA status from `cluster/ha/status/current` entries.
@@ -306,7 +336,8 @@ def parse_ha_status(entries: list[dict[str, Any]]) -> ProxmoxHAStatusData:
 
 class ProxmoxCoordinator(
     DataUpdateCoordinator[
-        ProxmoxCertificateData
+        ProxmoxBackupInfoData
+        | ProxmoxCertificateData
         | ProxmoxDiskData
         | ProxmoxHAStatusData
         | ProxmoxLXCData
@@ -419,6 +450,53 @@ class ProxmoxHAStatusCoordinator(ProxmoxCoordinator):
             raise UpdateFailed(msg)
 
         return parse_ha_status(api_status)
+
+
+class ProxmoxBackupInfoCoordinator(ProxmoxCoordinator):
+    """
+    Proxmox VE backup coverage coordinator.
+
+    Cluster-wide (`Sys.Audit` on `/`), so it uses the optional cluster
+    credentials like the HA coordinators rather than the primary
+    least-privilege ones.
+    """
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        proxmox: ProxmoxAPI,
+    ) -> None:
+        """Initialize the Proxmox backup info coordinator."""
+        super().__init__(
+            hass,
+            LOGGER,
+            name="proxmox_coordinator_backup_info",
+            update_interval=timedelta(seconds=BACKUP_INFO_UPDATE_INTERVAL),
+        )
+
+        self.hass = hass
+        self.config_entry: ConfigEntry = self.config_entry
+        self.proxmox = proxmox
+        self.resource_id = "backup_info"
+        self.api_category = ProxmoxType.Proxmox
+
+    async def _async_update_data(self) -> ProxmoxBackupInfoData:
+        """Update which guests no backup job covers."""
+        api_status = await self.hass.async_add_executor_job(
+            poll_api,
+            self.hass,
+            self.config_entry,
+            self.proxmox,
+            "cluster/backup-info/not-backed-up",
+            ProxmoxType.Proxmox,
+            self.resource_id,
+        )
+
+        if api_status is None:
+            msg = "Backup coverage is not available"
+            raise UpdateFailed(msg)
+
+        return parse_backup_info(api_status)
 
 
 class ProxmoxCertificateCoordinator(ProxmoxCoordinator):

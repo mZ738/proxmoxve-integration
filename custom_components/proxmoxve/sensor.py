@@ -883,6 +883,19 @@ PROXMOX_SENSOR_TASKS: Final[tuple[ProxmoxSensorEntityDescription, ...]] = (
 )
 
 
+PROXMOX_SENSOR_BACKUP_INFO: Final[tuple[ProxmoxSensorEntityDescription, ...]] = (
+    ProxmoxSensorEntityDescription(
+        key="guests_without_backup",
+        name="Guests without backup",
+        icon="mdi:backup-restore",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=0,
+        extra_attrs=["guests"],
+        translation_key="guests_without_backup",
+    ),
+)
+
+
 PROXMOX_SENSOR_CERTIFICATE: Final[tuple[ProxmoxSensorEntityDescription, ...]] = (
     ProxmoxSensorEntityDescription(
         key="expires",
@@ -963,6 +976,7 @@ async def async_setup_entry(
     async_add_entities(await async_setup_hardware_sensors(hass, config_entry))
     async_add_entities(await async_setup_sensors_ha_status(hass, config_entry))
     async_add_entities(await async_setup_sensors_certificates(hass, config_entry))
+    async_add_entities(await async_setup_sensors_backup_info(hass, config_entry))
 
 
 async def async_setup_sensors_ha_status(
@@ -996,6 +1010,36 @@ async def async_setup_sensors_ha_status(
         # before pve-ha-manager 5.1.3, no CRM master before HA is
         # configured) gets no entity rather than a permanently unknown one.
         if getattr(coordinator.data, description.key, UNDEFINED) is not UNDEFINED
+    ]
+
+
+async def async_setup_sensors_backup_info(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+) -> list:
+    """Set up the backup coverage sensor."""
+    coordinators = config_entry.runtime_data[COORDINATORS]
+
+    # Only present when the optional cluster credentials are configured and
+    # could be authenticated; the endpoint needs Sys.Audit on `/`.
+    if (
+        coordinator := coordinators.get(f"{ProxmoxType.Proxmox}_backup_info")
+    ) is None or coordinator.data is None:
+        return []
+
+    return [
+        create_sensor(
+            coordinator=coordinator,
+            info_device=device_info(
+                hass=hass,
+                config_entry=config_entry,
+                api_category=ProxmoxType.Proxmox,
+            ),
+            description=description,
+            resource_id="cluster",
+            config_entry=config_entry,
+        )
+        for description in PROXMOX_SENSOR_BACKUP_INFO
     ]
 
 

@@ -33,6 +33,9 @@ UPDATE_INTERVAL = 60
 # them, so polling them at the same rate as everything else would spend
 # one request per node per minute to learn nothing.
 CERTIFICATE_UPDATE_INTERVAL = 3600
+# Which guests a backup job covers changes when someone edits a job, not
+# from minute to minute.
+BACKUP_INFO_UPDATE_INTERVAL = 3600
 
 LOGGER = logging.getLogger(__package__)
 
@@ -66,6 +69,7 @@ class ProxmoxType(StrEnum):
     ZFS = "zfs"
     Tasks = "tasks"
     Certificate = "certificate"
+    BackupInfo = "backup_info"
 
 
 class ProxmoxCommand(StrEnum):

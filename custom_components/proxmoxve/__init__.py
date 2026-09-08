@@ -72,6 +72,7 @@ from .const import (
     ProxmoxType,
 )
 from .coordinator import (
+    ProxmoxBackupInfoCoordinator,
     ProxmoxCertificateCoordinator,
     ProxmoxDiskCoordinator,
     ProxmoxHAResourcesCoordinator,
@@ -861,6 +862,13 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
         )
         await ha_status_coordinator.async_refresh()
         coordinators[f"{ProxmoxType.Proxmox}_ha_status"] = ha_status_coordinator
+
+        backup_info_coordinator = ProxmoxBackupInfoCoordinator(
+            hass=hass,
+            proxmox=proxmox_ha_admin,
+        )
+        await backup_info_coordinator.async_refresh()
+        coordinators[f"{ProxmoxType.Proxmox}_backup_info"] = backup_info_coordinator
 
     config_entry.runtime_data = {
         PROXMOX_CLIENT: proxmox_client,

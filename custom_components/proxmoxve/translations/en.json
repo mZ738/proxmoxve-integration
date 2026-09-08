@@ -318,6 +318,14 @@
             }
           }
         },
+        "guests_without_backup": {
+          "name": "Guests without backup",
+          "state_attributes": {
+            "guests": {
+              "name": "Guests"
+            }
+          }
+        },
         "ha_armed_state": {
           "name": "HA armed state",
           "state": {
