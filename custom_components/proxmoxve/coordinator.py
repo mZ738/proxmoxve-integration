@@ -32,6 +32,7 @@ from requests.exceptions import (
 
 from .api import get_api
 from .const import (
+    CERTIFICATE_UPDATE_INTERVAL,
     CONF_GUEST_FILE_PATH,
     CONF_HA_ADMIN_USERNAME,
     CONF_NODE,
@@ -43,6 +44,7 @@ from .const import (
 )
 from .disk import disk_matches_id
 from .models import (
+    ProxmoxCertificateData,
     ProxmoxDiskData,
     ProxmoxHAStatusData,
     ProxmoxLXCData,
@@ -176,6 +178,59 @@ def qemu_memory_used(api_status: dict[str, Any]) -> int | UndefinedType:
     return api_status.get("mem", UNDEFINED)
 
 
+# The certificate serving the API and web interface. `pveproxy-ssl.pem` is
+# the one an administrator replaces - with an ACME certificate, or their own
+# - and it only exists once that has happened; otherwise the node falls back
+# to `pve-ssl.pem`, issued by the cluster's own CA. `pve-root-ca.pem` is that
+# CA and is deliberately ignored: it is valid for ten years and its expiry is
+# not something anyone acts on.
+CERTIFICATE_PREFERENCE: Final[tuple[str, ...]] = ("pveproxy-ssl.pem", "pve-ssl.pem")
+
+
+def _certificate_timestamp(value: Any) -> datetime | UndefinedType:
+    """Turn a certificate's unix timestamp into an aware datetime."""
+    if value is None:
+        return UNDEFINED
+    try:
+        return dt_util.utc_from_timestamp(float(value))
+    except (TypeError, ValueError, OverflowError, OSError):
+        LOGGER.warning("Unusable timestamp '%s' in Proxmox certificate info", value)
+        return UNDEFINED
+
+
+def parse_certificates(
+    entries: list[dict[str, Any]],
+    node_name: str,
+) -> ProxmoxCertificateData:
+    """
+    Pick the certificate that serves the API out of `certificates/info`.
+
+    The endpoint returns one entry per certificate file that exists, so a node
+    without a replaced certificate reports two and one with a custom or ACME
+    certificate reports three.
+    """
+    by_filename = {
+        entry["filename"]: entry
+        for entry in entries
+        if isinstance(entry, dict) and isinstance(entry.get("filename"), str)
+    }
+
+    chosen: dict[str, Any] = {}
+    for filename in CERTIFICATE_PREFERENCE:
+        if filename in by_filename:
+            chosen = by_filename[filename]
+            break
+
+    return ProxmoxCertificateData(
+        type=ProxmoxType.Certificate,
+        node=node_name,
+        expires=_certificate_timestamp(chosen.get("notafter")),
+        filename=chosen.get("filename"),
+        subject=chosen.get("subject"),
+        issuer=chosen.get("issuer"),
+    )
+
+
 def parse_ha_status(entries: list[dict[str, Any]]) -> ProxmoxHAStatusData:
     """
     Build the cluster HA status from `cluster/ha/status/current` entries.
@@ -251,7 +306,8 @@ def parse_ha_status(entries: list[dict[str, Any]]) -> ProxmoxHAStatusData:
 
 class ProxmoxCoordinator(
     DataUpdateCoordinator[
-        ProxmoxDiskData
+        ProxmoxCertificateData
+        | ProxmoxDiskData
         | ProxmoxHAStatusData
         | ProxmoxLXCData
         | ProxmoxNodeData
@@ -363,6 +419,50 @@ class ProxmoxHAStatusCoordinator(ProxmoxCoordinator):
             raise UpdateFailed(msg)
 
         return parse_ha_status(api_status)
+
+
+class ProxmoxCertificateCoordinator(ProxmoxCoordinator):
+    """Proxmox VE node certificate data update coordinator."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        proxmox: ProxmoxAPI,
+        node_name: str,
+    ) -> None:
+        """Initialize the Proxmox certificate coordinator."""
+        super().__init__(
+            hass,
+            LOGGER,
+            name=f"proxmox_coordinator_certificate_{node_name}",
+            update_interval=timedelta(seconds=CERTIFICATE_UPDATE_INTERVAL),
+        )
+
+        self.hass = hass
+        self.config_entry: ConfigEntry = self.config_entry
+        self.proxmox = proxmox
+        self.node_name = node_name
+        self.resource_id = f"{ProxmoxType.Certificate.capitalize()} {node_name}"
+
+    async def _async_update_data(self) -> ProxmoxCertificateData:
+        """Update the node's certificate information."""
+        # This endpoint needs no permission beyond being logged in, so it is
+        # read with the same least-privilege credentials as everything else.
+        api_status = await self.hass.async_add_executor_job(
+            poll_api,
+            self.hass,
+            self.config_entry,
+            self.proxmox,
+            f"nodes/{self.node_name}/certificates/info",
+            ProxmoxType.Node,
+            self.node_name,
+        )
+
+        if api_status is None:
+            msg = f"Certificate information for {self.node_name} is not available"
+            raise UpdateFailed(msg)
+
+        return parse_certificates(api_status, self.node_name)
 
 
 class ProxmoxNodeCoordinator(ProxmoxCoordinator):

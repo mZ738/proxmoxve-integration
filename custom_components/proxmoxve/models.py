@@ -179,3 +179,24 @@ class ProxmoxHAStatusData:
     ha_resources_total: int
     ha_resources_error: int
     ha_resources_error_list: list[dict[str, str]]
+
+
+@dataclasses.dataclass
+class ProxmoxCertificateData:
+    """
+    Data parsed from the Proxmox API for a node's TLS certificate.
+
+    The API also returns the certificate itself in a `pem` field, a few
+    kilobytes of it. That is deliberately not kept here: it would end up in
+    a state attribute and in every diagnostics dump, and it says nothing a
+    sensor can act on.
+    """
+
+    type: str
+    node: str
+    expires: datetime | UndefinedType
+    # Exposed as state attributes, so plain values: the UNDEFINED sentinel is
+    # not JSON serializable.
+    filename: str | None
+    subject: str | None
+    issuer: str | None

@@ -29,6 +29,10 @@ DEFAULT_PORT = 8006
 DEFAULT_REALM = "pam"
 DEFAULT_VERIFY_SSL = True
 UPDATE_INTERVAL = 60
+# Certificates are valid for years and only change when someone replaces
+# them, so polling them at the same rate as everything else would spend
+# one request per node per minute to learn nothing.
+CERTIFICATE_UPDATE_INTERVAL = 3600
 
 LOGGER = logging.getLogger(__package__)
 
@@ -61,6 +65,7 @@ class ProxmoxType(StrEnum):
     Resources = "resources"
     ZFS = "zfs"
     Tasks = "tasks"
+    Certificate = "certificate"
 
 
 class ProxmoxCommand(StrEnum):

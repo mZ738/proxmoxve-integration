@@ -883,6 +883,22 @@ PROXMOX_SENSOR_TASKS: Final[tuple[ProxmoxSensorEntityDescription, ...]] = (
 )
 
 
+PROXMOX_SENSOR_CERTIFICATE: Final[tuple[ProxmoxSensorEntityDescription, ...]] = (
+    ProxmoxSensorEntityDescription(
+        key="expires",
+        name="Certificate expires",
+        icon="mdi:certificate",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        # Most installations serve the cluster CA's own certificate, where an
+        # expiry years away is not worth an entity unless asked for.
+        entity_registry_enabled_default=False,
+        extra_attrs=["filename", "subject", "issuer"],
+        translation_key="certificate_expires",
+    ),
+)
+
+
 PROXMOX_SENSOR_HA_STATUS: Final[tuple[ProxmoxSensorEntityDescription, ...]] = (
     ProxmoxSensorEntityDescription(
         key="armed_state",
@@ -946,6 +962,7 @@ async def async_setup_entry(
     async_add_entities(await async_setup_sensors_tasks(hass, config_entry))
     async_add_entities(await async_setup_hardware_sensors(hass, config_entry))
     async_add_entities(await async_setup_sensors_ha_status(hass, config_entry))
+    async_add_entities(await async_setup_sensors_certificates(hass, config_entry))
 
 
 async def async_setup_sensors_ha_status(
@@ -980,6 +997,41 @@ async def async_setup_sensors_ha_status(
         # configured) gets no entity rather than a permanently unknown one.
         if getattr(coordinator.data, description.key, UNDEFINED) is not UNDEFINED
     ]
+
+
+async def async_setup_sensors_certificates(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+) -> list:
+    """Set up the per-node certificate sensors."""
+    coordinators = config_entry.runtime_data[COORDINATORS]
+    sensors = []
+
+    for node in config_entry.data[CONF_NODES]:
+        coordinator = coordinators.get(f"{ProxmoxType.Certificate}_{node}")
+        if coordinator is None or coordinator.data is None:
+            continue
+
+        sensors.extend(
+            create_sensor(
+                coordinator=coordinator,
+                info_device=device_info(
+                    hass=hass,
+                    config_entry=config_entry,
+                    api_category=ProxmoxType.Node,
+                    node=node,
+                ),
+                description=description,
+                resource_id=f"{ProxmoxType.Certificate}_{node}",
+                config_entry=config_entry,
+            )
+            for description in PROXMOX_SENSOR_CERTIFICATE
+            # A node that reports no usable certificate gets no entity rather
+            # than one that is permanently unknown.
+            if getattr(coordinator.data, description.key, UNDEFINED) is not UNDEFINED
+        )
+
+    return sensors
 
 
 async def async_setup_sensors_nodes(

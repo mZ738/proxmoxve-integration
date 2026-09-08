@@ -304,6 +304,20 @@
             }
           }
         },
+        "certificate_expires": {
+          "name": "Certificate expires",
+          "state_attributes": {
+            "filename": {
+              "name": "File"
+            },
+            "subject": {
+              "name": "Subject"
+            },
+            "issuer": {
+              "name": "Issuer"
+            }
+          }
+        },
         "ha_armed_state": {
           "name": "HA armed state",
           "state": {

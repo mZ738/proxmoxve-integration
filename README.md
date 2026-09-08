@@ -83,6 +83,16 @@ For QEMU virtual machines with the [QEMU Guest Agent](https://pve.proxmox.com/wi
 - Content is capped at 4 KiB per read; the sensor state is further truncated to 255 characters (Home Assistant's state length limit), with the full (capped) content available as the `guest_file_content` attribute.
 - QEMU only — LXC containers have no equivalent guest-agent file-read API.
 
+### Certificate expiry
+
+Each node gets a `Certificate expires` sensor, **disabled by default** — enable it like other [disabled entities](#disabled-entities). It reports the expiry of the certificate that actually serves the API and web interface: `pveproxy-ssl.pem` if you replaced it with your own or an ACME one, otherwise the `pve-ssl.pem` the cluster's own CA issued. The file, subject and issuer are attributes.
+
+It is off by default because most installations run on the cluster CA's self-signed certificate, where an expiry two years out is not something to watch. It earns its place once you put a real certificate on the node — that is what tends to expire unnoticed.
+
+The cluster CA itself (`pve-root-ca.pem`) is deliberately not reported: it is valid for ten years and its expiry is not something you act on.
+
+This needs no permissions beyond being able to log in, and it is polled once an hour rather than once a minute, since certificates only change when someone replaces them.
+
 ### Cluster HA Administration (Advanced, Optional)
 
 These features let you interact with the Proxmox HA (High Availability) stack, gated behind a **separate, optional** set of credentials:
