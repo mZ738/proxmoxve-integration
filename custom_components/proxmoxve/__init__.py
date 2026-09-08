@@ -975,6 +975,19 @@ def device_info(
         manufacturer = None
         serial_number = None
 
+    if (
+        via_device is not None
+        and dr.async_get(hass).async_get_device(identifiers={via_device}) is None
+    ):
+        # Home Assistant logs a report for a device created with a `via_device`
+        # that does not exist, and drops the link regardless - it only stores
+        # the id of a device it can find. That happens for a guest, storage,
+        # disk or pool sitting on a node the user did not select, so no node
+        # device was ever created for it. Leaving the link out loses nothing
+        # and keeps the log quiet; update_device_via() attaches a guest to its
+        # node as soon as that node has a device.
+        via_device = None
+
     if create:
         device_registry = dr.async_get(hass)
         return device_registry.async_get_or_create(
