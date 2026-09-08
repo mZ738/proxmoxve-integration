@@ -157,7 +157,7 @@ honestly rather than presented as equally proven:
 | Feature | What is untested |
 |---|---|
 | **Ceph** | Everything. I run no Ceph, so the endpoint is absent here. The health values come from Ceph itself rather than a Proxmox schema, since `cluster/ceph/status` hands `ceph -s` through unchanged. |
-| **Replication** | Everything. I run no ZFS replication, so `nodes/{node}/replication` returns an empty list here. The field names come from `PVE/API2/Replication.pm`. |
+| **Replication** | Only the failure path. A healthy job has been confirmed against a live cluster; what a job reports once it starts failing — `fail_count`, `error` — has not. |
 | **Subscription** | Only the `none` state is confirmed. I hold no subscription, so `active`, `expired`, `invalid` and `suspended` — and the level, product and due date attributes — have never been seen from a real response. |
 | **Certificate expiry** | Only the fallback path. No node here has a replaced certificate, so the `pveproxy-ssl.pem` branch has never been exercised against a live node. |
 

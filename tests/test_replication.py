@@ -26,11 +26,48 @@ BEHIND = {
 FAILING = {
     "id": "300-0",
     "guest": 300,
+    "vmtype": "lxc",
     "target": "node2",
     "last_sync": 1_500_000_000,
     "fail_count": 4,
     "error": "target node is not online",
 }
+
+
+# The complete field set a healthy job actually returns, from a live PVE 9
+# cluster - node names and the guest id replaced. Note what is *absent*: a
+# job that is neither disabled nor failing carries no `disable` and no
+# `error` key at all.
+LIVE_HEALTHY = {
+    "duration": 13.585964,
+    "fail_count": 0,
+    "guest": 9999,
+    "id": "9999-1",
+    "jobnum": 1,
+    "last_sync": 1_788_858_902,
+    "last_try": 1_788_858_902,
+    "next_sync": 1_791_032_400,
+    "schedule": "sat *-1..7 15:00",
+    "source": "node-a",
+    "target": "node-b",
+    "type": "local",
+    "vmtype": "lxc",
+}
+
+
+def test_a_real_healthy_job() -> None:
+    """
+    Test the exact shape a live cluster returns for a job that is fine.
+
+    The keys this does *not* contain are the point: no `disable`, no `error`.
+    Reading either without a default would fail on every healthy job.
+    """
+    data = parse_replication([LIVE_HEALTHY], "node-a")
+
+    assert data.jobs == 1
+    assert data.failing is False
+    assert data.failing_jobs == []
+    assert data.oldest_sync.timestamp() == 1_788_858_902
 
 
 def test_no_jobs() -> None:
@@ -74,6 +111,7 @@ def test_a_failing_job_is_reported_with_its_error() -> None:
             "id": "300-0",
             "failures": 4,
             "guest": 300,
+            "guest_type": "lxc",
             "target": "node2",
             "error": "target node is not online",
         }

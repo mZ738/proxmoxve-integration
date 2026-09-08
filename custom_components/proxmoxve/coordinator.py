@@ -347,7 +347,11 @@ def parse_replication(
 
         if (fail_count := entry.get("fail_count")) and isinstance(fail_count, int):
             job: dict[str, str | int] = {"id": str(entry["id"]), "failures": fail_count}
-            for key, field in (("guest", "guest"), ("target", "target")):
+            for key, field in (
+                ("guest", "guest"),
+                ("guest_type", "vmtype"),
+                ("target", "target"),
+            ):
                 if (value := entry.get(field)) is not None:
                     job[key] = value if isinstance(value, int) else str(value)
             if isinstance(error := entry.get("error"), str):
