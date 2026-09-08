@@ -50,6 +50,35 @@ Both are auto-detected — whichever one is installed and enabled for temperatur
 
 This modifies the Proxmox VE API to inject `sensors -j` output into the `GET /nodes/{node}/status` response. No additional API calls are made by the integration.
 
+#### When readings come and go
+
+PVE-mods v2 does this in two steps: a collector inside `pveproxy` runs `sensors`, enriches it with drive and CPU names, and writes the result to `/run/pveproxy/pve-mod/sensors.json`; the API handler then reads that file back. If the file is not there when it is read, the field arrives in the response **present but empty**, and every hardware sensor drops to *unknown*.
+
+That file lives on a tmpfs, in a directory that does not survive a `pveproxy` restart — installing a certificate is enough to take it away. PVE-mods creates that directory when you run its configuration wizard and not when it writes, so a node can lose its readings for good while `sensors -j` on the same host still works perfectly, and while the collector still logs that it wrote the file.
+
+Re-running the PVE-mods configuration brings the readings back, but only until the next restart. To fix it for good, have the directory created on every start:
+
+```bash
+# /etc/systemd/system/pveproxy.service.d/pve-mod.conf
+[Service]
+ExecStartPre=/bin/mkdir -p /run/pveproxy/pve-mod
+ExecStartPre=/bin/chown www-data:www-data /run/pveproxy/pve-mod
+```
+
+```bash
+systemctl daemon-reload
+systemctl restart pveproxy
+```
+
+The integration keeps the previous readings for up to ten minutes when a poll brings none, so a missed collection leaves no hole in the history. Past that it reports nothing, because by then the data really is gone rather than late — PVE-mods removed, the module unloaded, `lm-sensors` broken.
+
+If your hardware sensors go unknown for longer than that, check the source rather than the integration:
+
+```bash
+ls -l /run/pveproxy/pve-mod/sensors.json    # missing or empty means no readings to serve
+journalctl -u pveproxy --since today | grep -i pve-mod
+```
+
 #### Supported Hardware
 
 | Chip / Driver | Device Type | Examples |
