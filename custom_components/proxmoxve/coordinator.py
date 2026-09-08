@@ -125,11 +125,12 @@ HA_SERVICE_ERROR_STATES: Final[frozenset[str]] = frozenset(
 HA_CRM_MASTER_DEAD_AFTER: Final[timedelta] = timedelta(seconds=30)
 
 # How long a node's last hardware readings stay usable when a poll comes
-# back without any. PVE-mods injects `sensors -j` into the node status
-# response, and it does not manage that on every single call - a missed
-# one turned every temperature into "unknown" for a minute. A reading a
-# few minutes old is far more useful than a hole in the graph, but past
-# this the data really is gone rather than late.
+# back without any. PVE-mods collects on demand: a worker writes the
+# `sensors` output to a file under /run and removes it again after ten
+# seconds of inactivity, so a poll that arrives cold gets an empty field
+# and the data only lands a second later. A reading a few minutes old is
+# far more useful than a hole in the graph, but past this the data really
+# is gone rather than late.
 SENSORS_HOLD_FOR: Final[timedelta] = timedelta(minutes=10)
 
 
@@ -868,10 +869,11 @@ class ProxmoxNodeCoordinator(ProxmoxCoordinator):
         """
         Keep the previous hardware readings when a poll brings none.
 
-        PVE-mods injects the `sensors -j` output into the node status
-        response, and it does not manage that on every call. Blanking every
-        temperature because one response arrived without it produces a gap in
-        the history that says "no reading" where the truth is "not this time".
+        PVE-mods collects on demand and tears the collection down again
+        after a few seconds idle, so a poll can easily arrive before there
+        is anything to read. Blanking every temperature because one response
+        came back empty produces a gap in the history that says "no reading"
+        where the truth is "not this time".
 
         The readings are only held for SENSORS_HOLD_FOR. Past that, whatever
         provides them is gone rather than late - PVE-mods removed, the module
