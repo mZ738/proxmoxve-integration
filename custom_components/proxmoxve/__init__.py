@@ -1031,18 +1031,24 @@ def device_info(
         manufacturer = None
         serial_number = None
 
-    if (
-        via_device is not None
-        and dr.async_get(hass).async_get_device(identifiers={via_device}) is None
-    ):
-        # Home Assistant logs a report for a device created with a `via_device`
-        # that does not exist, and drops the link regardless - it only stores
-        # the id of a device it can find. That happens for a guest, storage,
-        # disk or pool sitting on a node the user did not select, so no node
-        # device was ever created for it. Leaving the link out loses nothing
-        # and keeps the log quiet; update_device_via() attaches a guest to its
-        # node as soon as that node has a device.
-        via_device = None
+    # `via_device` is deprecated and stops working in Home Assistant 2027.8.0:
+    # identifiers are only unique within a config entry, so an identifier pair
+    # no longer points at one device unambiguously. The registry wants the
+    # parent's id instead, which means resolving it here - scoped to this entry,
+    # so the lookup cannot be ambiguous either.
+    #
+    # Resolving also settles a separate complaint: naming a parent that does not
+    # exist made Home Assistant log a report while dropping the link anyway.
+    # That happens for a guest, storage, disk or pool on a node the user did not
+    # select, so no node device was created for it. Leaving the link out loses
+    # nothing, and update_device_via() attaches a guest to its node as soon as
+    # that node has a device.
+    via_device_id: str | None = None
+    if via_device is not None:
+        parent = dr.async_get(hass).async_get_device_by_identifier(
+            via_device, config_entry.entry_id
+        )
+        via_device_id = parent.id if parent else None
 
     if create:
         device_registry = dr.async_get(hass)
@@ -1056,7 +1062,7 @@ def device_info(
             model=model,
             sw_version=proxmox_version,
             hw_version=None,
-            via_device=via_device,
+            via_device_id=via_device_id,
             serial_number=serial_number or None,
         )
     return DeviceInfo(
@@ -1068,7 +1074,7 @@ def device_info(
         model=model,
         sw_version=proxmox_version,
         hw_version=None,
-        via_device=via_device,
+        via_device_id=via_device_id,
         serial_number=serial_number or None,
     )
 

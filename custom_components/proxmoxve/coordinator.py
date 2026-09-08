@@ -1413,13 +1413,15 @@ def update_device_via(
             )
         },
     )
-    via_device = dev_reg.async_get_device(
-        {
-            (
-                DOMAIN,
-                f"{self.config_entry.entry_id}_{ProxmoxType.Node.upper()}_{node_name}",
-            )
-        }
+    # Scoped to this config entry: identifiers are only unique within one, so
+    # async_get_device can resolve to a device belonging to a different
+    # integration that happens to share the pair.
+    via_device = dev_reg.async_get_device_by_identifier(
+        (
+            DOMAIN,
+            f"{self.config_entry.entry_id}_{ProxmoxType.Node.upper()}_{node_name}",
+        ),
+        self.config_entry.entry_id,
     )
     via_device_id: str | UndefinedType = via_device.id if via_device else UNDEFINED
     if device.via_device_id != via_device_id:

@@ -30,10 +30,10 @@ async def _setup(hass: HomeAssistant) -> MockConfigEntry:
 
 
 async def test_links_to_a_node_that_has_a_device(hass: HomeAssistant) -> None:
-    """Test the link is kept for a node that does have a device."""
+    """Test the parent id is filled in for a node that does have a device."""
     entry = await _setup(hass)
     node_identifier = (DOMAIN, f"{entry.entry_id}_{ProxmoxType.Node.upper()}_pve")
-    dr.async_get(hass).async_get_or_create(
+    node = dr.async_get(hass).async_get_or_create(
         config_entry_id=entry.entry_id,
         identifiers={node_identifier},
         name="Node pve",
@@ -47,7 +47,8 @@ async def test_links_to_a_node_that_has_a_device(hass: HomeAssistant) -> None:
         resource_id="tank",
     )
 
-    assert info["via_device"] == node_identifier
+    assert info["via_device_id"] == node.id
+    assert "via_device" not in info
 
 
 async def test_link_is_dropped_for_a_node_without_a_device(
@@ -56,7 +57,7 @@ async def test_link_is_dropped_for_a_node_without_a_device(
     """
     Test no link is claimed to a node that has no device.
 
-    Home Assistant reports a device created with a `via_device` that does not
+    Home Assistant reported a device created naming a parent that does not
     exist, and drops the link regardless. This happens for anything sitting on
     a node the user did not select. Leaving the link out loses nothing and
     keeps that report out of the log.
@@ -71,4 +72,4 @@ async def test_link_is_dropped_for_a_node_without_a_device(
         resource_id="tank",
     )
 
-    assert info["via_device"] is None
+    assert info["via_device_id"] is None
