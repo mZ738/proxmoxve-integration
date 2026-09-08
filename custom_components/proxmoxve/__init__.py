@@ -16,6 +16,7 @@ from homeassistant.const import (
     CONF_PORT,
     CONF_USERNAME,
     CONF_VERIFY_SSL,
+    EVENT_HOMEASSISTANT_STOP,
     Platform,
 )
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
@@ -85,8 +86,9 @@ from .coordinator import (
 from .disk import colliding_disk_wwns, resolve_disk_id
 
 if TYPE_CHECKING:
-    from homeassistant.core import HomeAssistant
+    from homeassistant.core import Event, HomeAssistant
     from homeassistant.helpers.typing import ConfigType
+    from proxmoxer import ProxmoxAPI
 
     from .models import ProxmoxDiskData, ProxmoxStorageData
 
@@ -487,6 +489,38 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
     return True
 
 
+async def _get_api_or_retry_setup(
+    hass: HomeAssistant,
+    proxmox: ProxmoxAPI,
+    api_path: str,
+    host: str,
+) -> dict | list | None:
+    """
+    Read an API path during setup, asking to be retried if the host is down.
+
+    An exception escaping async_setup_entry leaves the entry in SETUP_ERROR,
+    which Home Assistant does not retry - the integration then stays dead until
+    it is reloaded by hand, even once Proxmox is back. ConfigEntryNotReady is
+    what asks for the retry. build_client already translates these exceptions,
+    but it only reaches the network when authenticating with a password; with
+    an API token it constructs the client offline, so the first call to fail is
+    this one.
+    """
+    try:
+        return await hass.async_add_executor_job(get_api, proxmox, api_path)
+    except AuthenticationError as error:
+        raise ConfigEntryAuthFailed from error
+    except (
+        SSLError,
+        ConnectTimeout,
+        RetryError,
+        connError,
+        ResourceException,
+    ) as error:
+        msg = f"Connection is unreachable to host {host}"
+        raise ConfigEntryNotReady(msg) from error
+
+
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Set up the platform."""
     hass.data.setdefault(DOMAIN, {})
@@ -547,9 +581,9 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
     ] = {}
     nodes_add_device = []
 
-    resources = await hass.async_add_executor_job(get_api, proxmox, "cluster/resources")
+    resources = await _get_api_or_retry_setup(hass, proxmox, "cluster/resources", host)
 
-    nodes_api = await hass.async_add_executor_job(get_api, proxmox, "nodes")
+    nodes_api = await _get_api_or_retry_setup(hass, proxmox, "nodes", host)
     for node in config_entry.data[CONF_NODES]:
         if node in [
             node_proxmox["node"]
@@ -824,6 +858,28 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
         PROXMOX_HA_ADMIN_CLIENT: proxmox_ha_admin_client,
         COORDINATORS: coordinators,
     }
+
+    async def _stop_polling(_event: Event) -> None:
+        """
+        Stop scheduling refreshes once Home Assistant is shutting down.
+
+        Every poll runs in an executor thread and blocks there until the
+        Proxmox API answers or the request times out. A thread cannot be
+        cancelled, so a refresh that starts late holds up shutdown - which is
+        what Home Assistant means by "Integrations should cancel non-critical
+        tasks when receiving the stop event". Shutting the coordinators down
+        stops new polls from being scheduled; one already in flight still
+        finishes, bounded by the client's timeout.
+        """
+        for coordinator in coordinators.values():
+            for single in (
+                coordinator if isinstance(coordinator, list) else [coordinator]
+            ):
+                await single.async_shutdown()
+
+    config_entry.async_on_unload(
+        hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, _stop_polling)
+    )
 
     if proxmox_ha_admin_client is not None:
         device_info(
