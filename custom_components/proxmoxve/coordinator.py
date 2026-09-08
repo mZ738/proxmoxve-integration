@@ -32,14 +32,13 @@ from requests.exceptions import (
 
 from .api import get_api
 from .const import (
-    BACKUP_INFO_UPDATE_INTERVAL,
-    CERTIFICATE_UPDATE_INTERVAL,
     CONF_GUEST_FILE_PATH,
     CONF_HA_ADMIN_USERNAME,
     CONF_NODE,
     DOMAIN,
     GUEST_FILE_READ_MAX_BYTES,
     LOGGER,
+    SLOW_UPDATE_INTERVAL,
     UPDATE_INTERVAL,
     ProxmoxType,
 )
@@ -52,6 +51,7 @@ from .models import (
     ProxmoxLXCData,
     ProxmoxNodeData,
     ProxmoxStorageData,
+    ProxmoxSubscriptionData,
     ProxmoxTaskData,
     ProxmoxUpdateData,
     ProxmoxVMData,
@@ -261,6 +261,42 @@ def parse_backup_info(entries: list[dict[str, Any]]) -> ProxmoxBackupInfoData:
     )
 
 
+# The states Proxmox documents for a node's subscription
+# (PVE::API2::Subscription). Anything else is treated as unknown rather than
+# passed on, so the enum sensor never reports a state outside its options.
+SUBSCRIPTION_STATES: Final[frozenset[str]] = frozenset(
+    {"new", "notfound", "active", "invalid", "expired", "suspended"}
+)
+
+
+def parse_subscription(
+    api_status: dict[str, Any],
+    node_name: str,
+) -> ProxmoxSubscriptionData:
+    """
+    Build a node's subscription state from `nodes/{node}/subscription`.
+
+    `key`, `serverid` and `signature` are read past deliberately: they
+    identify the machine and the subscription, and nothing here needs them.
+    """
+    status = api_status.get("status")
+    if status not in SUBSCRIPTION_STATES:
+        if status is not None:
+            LOGGER.warning(
+                "Unknown Proxmox subscription status '%s', ignoring it", status
+            )
+        status = UNDEFINED
+
+    return ProxmoxSubscriptionData(
+        type=ProxmoxType.Subscription,
+        node=node_name,
+        status=status,
+        level=api_status.get("level"),
+        product=api_status.get("productname"),
+        next_due=api_status.get("nextduedate"),
+    )
+
+
 def parse_ha_status(entries: list[dict[str, Any]]) -> ProxmoxHAStatusData:
     """
     Build the cluster HA status from `cluster/ha/status/current` entries.
@@ -343,6 +379,7 @@ class ProxmoxCoordinator(
         | ProxmoxLXCData
         | ProxmoxNodeData
         | ProxmoxStorageData
+        | ProxmoxSubscriptionData
         | ProxmoxTaskData
         | ProxmoxUpdateData
         | ProxmoxVMData
@@ -471,7 +508,7 @@ class ProxmoxBackupInfoCoordinator(ProxmoxCoordinator):
             hass,
             LOGGER,
             name="proxmox_coordinator_backup_info",
-            update_interval=timedelta(seconds=BACKUP_INFO_UPDATE_INTERVAL),
+            update_interval=timedelta(seconds=SLOW_UPDATE_INTERVAL),
         )
 
         self.hass = hass
@@ -499,6 +536,50 @@ class ProxmoxBackupInfoCoordinator(ProxmoxCoordinator):
         return parse_backup_info(api_status)
 
 
+class ProxmoxSubscriptionCoordinator(ProxmoxCoordinator):
+    """Proxmox VE node subscription data update coordinator."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        proxmox: ProxmoxAPI,
+        node_name: str,
+    ) -> None:
+        """Initialize the Proxmox subscription coordinator."""
+        super().__init__(
+            hass,
+            LOGGER,
+            name=f"proxmox_coordinator_subscription_{node_name}",
+            update_interval=timedelta(seconds=SLOW_UPDATE_INTERVAL),
+        )
+
+        self.hass = hass
+        self.config_entry: ConfigEntry = self.config_entry
+        self.proxmox = proxmox
+        self.node_name = node_name
+        self.resource_id = f"{ProxmoxType.Subscription.capitalize()} {node_name}"
+
+    async def _async_update_data(self) -> ProxmoxSubscriptionData:
+        """Update the node's subscription state."""
+        # Needs no permission beyond being logged in, so it uses the same
+        # least-privilege credentials as everything else.
+        api_status = await self.hass.async_add_executor_job(
+            poll_api,
+            self.hass,
+            self.config_entry,
+            self.proxmox,
+            f"nodes/{self.node_name}/subscription",
+            ProxmoxType.Node,
+            self.node_name,
+        )
+
+        if not isinstance(api_status, dict):
+            msg = f"Subscription information for {self.node_name} is not available"
+            raise UpdateFailed(msg)
+
+        return parse_subscription(api_status, self.node_name)
+
+
 class ProxmoxCertificateCoordinator(ProxmoxCoordinator):
     """Proxmox VE node certificate data update coordinator."""
 
@@ -513,7 +594,7 @@ class ProxmoxCertificateCoordinator(ProxmoxCoordinator):
             hass,
             LOGGER,
             name=f"proxmox_coordinator_certificate_{node_name}",
-            update_interval=timedelta(seconds=CERTIFICATE_UPDATE_INTERVAL),
+            update_interval=timedelta(seconds=SLOW_UPDATE_INTERVAL),
         )
 
         self.hass = hass

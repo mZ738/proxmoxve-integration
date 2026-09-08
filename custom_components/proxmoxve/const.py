@@ -29,13 +29,11 @@ DEFAULT_PORT = 8006
 DEFAULT_REALM = "pam"
 DEFAULT_VERIFY_SSL = True
 UPDATE_INTERVAL = 60
-# Certificates are valid for years and only change when someone replaces
-# them, so polling them at the same rate as everything else would spend
-# one request per node per minute to learn nothing.
-CERTIFICATE_UPDATE_INTERVAL = 3600
-# Which guests a backup job covers changes when someone edits a job, not
-# from minute to minute.
-BACKUP_INFO_UPDATE_INTERVAL = 3600
+# For everything that changes when a person changes it, rather than on its
+# own: a certificate is replaced, a backup job is edited, a subscription is
+# entered. Polling those at the usual interval would spend a request a minute
+# to learn nothing, and this integration already makes plenty.
+SLOW_UPDATE_INTERVAL = 3600
 
 LOGGER = logging.getLogger(__package__)
 
@@ -70,6 +68,7 @@ class ProxmoxType(StrEnum):
     Tasks = "tasks"
     Certificate = "certificate"
     BackupInfo = "backup_info"
+    Subscription = "subscription"
 
 
 class ProxmoxCommand(StrEnum):

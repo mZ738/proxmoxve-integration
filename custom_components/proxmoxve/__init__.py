@@ -81,6 +81,7 @@ from .coordinator import (
     ProxmoxNodeCoordinator,
     ProxmoxQEMUCoordinator,
     ProxmoxStorageCoordinator,
+    ProxmoxSubscriptionCoordinator,
     ProxmoxTaskCoordinator,
     ProxmoxUpdateCoordinator,
     ProxmoxZFSCoordinator,
@@ -623,6 +624,16 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
             )
             await coordinator_certificate.async_refresh()
             coordinators[f"{ProxmoxType.Certificate}_{node}"] = coordinator_certificate
+
+            coordinator_subscription = ProxmoxSubscriptionCoordinator(
+                hass=hass,
+                proxmox=proxmox,
+                node_name=node,
+            )
+            await coordinator_subscription.async_refresh()
+            coordinators[f"{ProxmoxType.Subscription}_{node}"] = (
+                coordinator_subscription
+            )
 
             if config_entry.options.get(CONF_TASKS_ENABLE, True):
                 coordinator_tasks = ProxmoxTaskCoordinator(

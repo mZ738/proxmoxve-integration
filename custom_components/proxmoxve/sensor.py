@@ -896,6 +896,23 @@ PROXMOX_SENSOR_BACKUP_INFO: Final[tuple[ProxmoxSensorEntityDescription, ...]] = 
 )
 
 
+PROXMOX_SENSOR_SUBSCRIPTION: Final[tuple[ProxmoxSensorEntityDescription, ...]] = (
+    ProxmoxSensorEntityDescription(
+        key="status",
+        name="Subscription",
+        icon="mdi:license",
+        device_class=SensorDeviceClass.ENUM,
+        options=["new", "notfound", "active", "invalid", "expired", "suspended"],
+        entity_category=EntityCategory.DIAGNOSTIC,
+        # Most installations run without a subscription, where this reads
+        # "notfound" forever; it is worth having only once there is one.
+        entity_registry_enabled_default=False,
+        extra_attrs=["level", "product", "next_due"],
+        translation_key="subscription_status",
+    ),
+)
+
+
 PROXMOX_SENSOR_CERTIFICATE: Final[tuple[ProxmoxSensorEntityDescription, ...]] = (
     ProxmoxSensorEntityDescription(
         key="expires",
@@ -977,6 +994,7 @@ async def async_setup_entry(
     async_add_entities(await async_setup_sensors_ha_status(hass, config_entry))
     async_add_entities(await async_setup_sensors_certificates(hass, config_entry))
     async_add_entities(await async_setup_sensors_backup_info(hass, config_entry))
+    async_add_entities(await async_setup_sensors_subscription(hass, config_entry))
 
 
 async def async_setup_sensors_ha_status(
@@ -1041,6 +1059,39 @@ async def async_setup_sensors_backup_info(
         )
         for description in PROXMOX_SENSOR_BACKUP_INFO
     ]
+
+
+async def async_setup_sensors_subscription(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+) -> list:
+    """Set up the per-node subscription sensors."""
+    coordinators = config_entry.runtime_data[COORDINATORS]
+    sensors = []
+
+    for node in config_entry.data[CONF_NODES]:
+        coordinator = coordinators.get(f"{ProxmoxType.Subscription}_{node}")
+        if coordinator is None or coordinator.data is None:
+            continue
+
+        sensors.extend(
+            create_sensor(
+                coordinator=coordinator,
+                info_device=device_info(
+                    hass=hass,
+                    config_entry=config_entry,
+                    api_category=ProxmoxType.Node,
+                    node=node,
+                ),
+                description=description,
+                resource_id=f"{ProxmoxType.Subscription}_{node}",
+                config_entry=config_entry,
+            )
+            for description in PROXMOX_SENSOR_SUBSCRIPTION
+            if getattr(coordinator.data, description.key, UNDEFINED) is not UNDEFINED
+        )
+
+    return sensors
 
 
 async def async_setup_sensors_certificates(

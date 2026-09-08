@@ -83,6 +83,14 @@ For QEMU virtual machines with the [QEMU Guest Agent](https://pve.proxmox.com/wi
 - Content is capped at 4 KiB per read; the sensor state is further truncated to 255 characters (Home Assistant's state length limit), with the full (capped) content available as the `guest_file_content` attribute.
 - QEMU only — LXC containers have no equivalent guest-agent file-read API.
 
+### Subscription
+
+Each node gets a `Subscription` sensor — `active`, `expired`, `invalid`, `suspended`, `new` or `none` — with the level, product name and next due date as attributes. **Disabled by default**: most installations run without a subscription, where it reads "none" forever and is worth having only once there is one.
+
+The subscription key, the server ID and the response signature are deliberately not exposed. They identify the machine and the subscription, and would otherwise end up in a state attribute and in every diagnostics dump.
+
+Like the certificate sensor, this needs no permissions beyond being able to log in, and is polled hourly.
+
 ### Certificate expiry
 
 Each node gets a `Certificate expires` sensor, **disabled by default** — enable it like other [disabled entities](#disabled-entities). It reports the expiry of the certificate that actually serves the API and web interface: `pveproxy-ssl.pem` if you replaced it with your own or an ACME one, otherwise the `pve-ssl.pem` the cluster's own CA issued. The file, subject and issuer are attributes.

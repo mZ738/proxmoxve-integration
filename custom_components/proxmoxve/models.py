@@ -214,3 +214,24 @@ class ProxmoxBackupInfoData:
     type: str
     guests_without_backup: int
     guests: list[dict[str, str | int]]
+
+
+@dataclasses.dataclass
+class ProxmoxSubscriptionData:
+    """
+    Data parsed from the Proxmox API for a node's subscription.
+
+    The response also carries `key`, `serverid` and `signature`. None of them
+    are kept: they identify the machine and the subscription itself, and would
+    otherwise end up in a state attribute and in every diagnostics dump.
+
+    The remaining fields are exposed as state attributes, so they hold plain
+    values - the UNDEFINED sentinel is not JSON serializable.
+    """
+
+    type: str
+    node: str
+    status: str | UndefinedType
+    level: str | None
+    product: str | None
+    next_due: str | None

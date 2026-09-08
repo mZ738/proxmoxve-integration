@@ -326,6 +326,28 @@
             }
           }
         },
+        "subscription_status": {
+          "name": "Subscription",
+          "state": {
+            "new": "New",
+            "notfound": "None",
+            "active": "Active",
+            "invalid": "Invalid",
+            "expired": "Expired",
+            "suspended": "Suspended"
+          },
+          "state_attributes": {
+            "level": {
+              "name": "Level"
+            },
+            "product": {
+              "name": "Product"
+            },
+            "next_due": {
+              "name": "Next due"
+            }
+          }
+        },
         "ha_armed_state": {
           "name": "HA armed state",
           "state": {
