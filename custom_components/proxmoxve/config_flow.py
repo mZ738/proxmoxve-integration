@@ -1106,9 +1106,11 @@ class ProxmoxVEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     CONF_AUTO_DISCOVERY,
                     default=False,
                 ): selector.BooleanSelector(),
+                # On for a new setup: there are no ids yet to keep. Entries
+                # from before the option carry no value and stay as they are.
                 vol.Optional(
                     CONF_NEW_ENTITY_IDS,
-                    default=False,
+                    default=True,
                 ): selector.BooleanSelector(),
                 vol.Optional(
                     CONF_ENTITY_ID_PREFIX,
@@ -1199,7 +1201,7 @@ class ProxmoxVEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_DISKS_ENABLE: user_input.get(CONF_DISKS_ENABLE),
                 CONF_TASKS_ENABLE: user_input.get(CONF_TASKS_ENABLE),
                 CONF_AUTO_DISCOVERY: user_input.get(CONF_AUTO_DISCOVERY, False),
-                CONF_NEW_ENTITY_IDS: user_input.get(CONF_NEW_ENTITY_IDS, False),
+                CONF_NEW_ENTITY_IDS: user_input.get(CONF_NEW_ENTITY_IDS, True),
                 CONF_ENTITY_ID_PREFIX: (
                     user_input.get(CONF_ENTITY_ID_PREFIX) or ""
                 ).strip()
