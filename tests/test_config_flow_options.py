@@ -44,6 +44,7 @@ from .const import (
     USER_INPUT_OPTION_AUTH,
     mock_config_entry,
 )
+from .fake_api import FakeProxmox
 
 
 async def test_options_flow_host_auth(hass: HomeAssistant) -> None:
@@ -432,7 +433,7 @@ async def test_options_flow_change_expose_general_error(hass: HomeAssistant) -> 
 
 
 async def test_options_flow_advanced_keeps_the_selection_and_sets_the_interval(
-    hass: HomeAssistant,
+    hass: HomeAssistant, fake_api: FakeProxmox, current_entry: MockConfigEntry
 ) -> None:
     """
     Test the advanced step writes its fields and leaves the rest alone.
@@ -440,41 +441,35 @@ async def test_options_flow_advanced_keeps_the_selection_and_sets_the_interval(
     The selection step and the advanced step each save only what they show,
     merged into the options that exist - so neither wipes the other's.
     """
-    with (
-        patch("proxmoxer.ProxmoxResource.get", return_value=MOCK_GET_RESPONSE),
-        patch(
-            "proxmoxer.backends.https.ProxmoxHTTPAuth._get_new_tokens",
-            return_value=None,
-        ),
-    ):
-        await async_init_integration(hass, mock_config_entry)
-        hass.config_entries.async_update_entry(
-            mock_config_entry,
-            options={**mock_config_entry.options, CONF_AUTO_DISCOVERY: True},
-        )
+    hass.config_entries.async_update_entry(
+        current_entry, options={**current_entry.options, CONF_AUTO_DISCOVERY: True}
+    )
+    await hass.config_entries.async_setup(current_entry.entry_id)
+    await hass.async_block_till_done()
+    assert current_entry.state is ConfigEntryState.LOADED
 
-        result = await hass.config_entries.options.async_init(
-            mock_config_entry.entry_id, data=None
-        )
-        result = await hass.config_entries.options.async_configure(
-            result["flow_id"], {"next_step_id": "advanced"}
-        )
-        assert result["type"] == FlowResultType.FORM
-        assert result["step_id"] == "advanced"
+    result = await hass.config_entries.options.async_init(
+        current_entry.entry_id, data=None
+    )
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"next_step_id": "advanced"}
+    )
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "advanced"
 
-        result = await hass.config_entries.options.async_configure(
-            result["flow_id"],
-            user_input={
-                CONF_UPDATE_INTERVAL: "30",
-                CONF_UPDATES_ENABLE: False,
-                CONF_ENTITY_ID_SCHEME: "standard",
-            },
-        )
-        await hass.async_block_till_done()
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={
+            CONF_UPDATE_INTERVAL: "30",
+            CONF_UPDATES_ENABLE: False,
+            CONF_ENTITY_ID_SCHEME: "standard",
+        },
+    )
+    await hass.async_block_till_done()
 
     assert result["type"] == FlowResultType.ABORT
     assert result["reason"] == "changes_successful"
-    options = mock_config_entry.options
+    options = current_entry.options
     assert options[CONF_UPDATE_INTERVAL] == 30
     assert options[CONF_UPDATES_ENABLE] is False
     assert options[CONF_DISKS_ENABLE] is True
