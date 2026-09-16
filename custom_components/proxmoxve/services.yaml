@@ -1,7 +1,5 @@
 backup:
   target:
-    device:
-      integration: proxmoxve
     entity:
       integration: proxmoxve
   fields:

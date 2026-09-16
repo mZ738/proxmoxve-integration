@@ -17,6 +17,13 @@ import dataclasses
 from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
+from homeassistant.const import (
+    ATTR_AREA_ID,
+    ATTR_DEVICE_ID,
+    ATTR_ENTITY_ID,
+    ATTR_FLOOR_ID,
+    ATTR_LABEL_ID,
+)
 from homeassistant.core import (
     HomeAssistant,
     ServiceCall,
@@ -24,10 +31,10 @@ from homeassistant.core import (
     SupportsResponse,
 )
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
+from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
-from homeassistant.helpers.service import async_extract_referenced_entity_ids
 from proxmoxer import AuthenticationError
 from proxmoxer.core import ResourceException
 from requests.exceptions import RequestException
@@ -182,16 +189,52 @@ def resolve_device(
     raise _not_a_backup_target(device)
 
 
-def targeted_devices(hass: HomeAssistant, call: ServiceCall) -> list[str]:
-    """Return the device ids the call targets, entities counted by their device."""
-    selected = async_extract_referenced_entity_ids(hass, call)
-    devices = list(selected.referenced_devices)
-    registry = er.async_get(hass)
-    for entity_id in sorted(selected.referenced | selected.indirectly_referenced):
-        entity = registry.async_get(entity_id)
-        if entity is not None and entity.device_id and entity.device_id not in devices:
-            devices.append(entity.device_id)
-    return devices
+def _ids(call_data: dict[str, Any], key: str) -> list[str]:
+    """Return the ids under a target key; `none`/`all` are not ids."""
+    value = call_data.get(key)
+    if not value or value in ("none", "all"):
+        return []
+    return list(cv.ensure_list(value))
+
+
+def targeted_devices(hass: HomeAssistant, call_data: dict[str, Any]) -> list[str]:
+    """
+    Return the device ids the call targets, in the order given.
+
+    Devices count as themselves, entities by their device, areas and
+    labels by the devices and entities in them, floors by their areas.
+    """
+    devices = dr.async_get(hass)
+    entities = er.async_get(hass)
+    areas = ar.async_get(hass)
+    found: list[str] = []
+
+    def add(device_id: str | None) -> None:
+        if device_id and device_id not in found:
+            found.append(device_id)
+
+    area_ids = _ids(call_data, ATTR_AREA_ID)
+    for floor_id in _ids(call_data, ATTR_FLOOR_ID):
+        area_ids.extend(
+            area.id for area in areas.async_list_areas() if area.floor_id == floor_id
+        )
+
+    for device_id in _ids(call_data, ATTR_DEVICE_ID):
+        add(device_id)
+    for entity_id in _ids(call_data, ATTR_ENTITY_ID):
+        if (entity := entities.async_get(entity_id)) is not None:
+            add(entity.device_id)
+    for area_id in area_ids:
+        for device in dr.async_entries_for_area(devices, area_id):
+            add(device.id)
+        for entity in er.async_entries_for_area(entities, area_id):
+            add(entity.device_id)
+    for label_id in _ids(call_data, ATTR_LABEL_ID):
+        for device in dr.async_entries_for_label(devices, label_id):
+            add(device.id)
+        for entity in er.async_entries_for_label(entities, label_id):
+            add(entity.device_id)
+    return found
 
 
 def plan_backups(
@@ -324,7 +367,7 @@ async def _async_start(
 
 async def _async_backup(call: ServiceCall) -> ServiceResponse:
     """Start the runs and hand back the task ids Proxmox assigns them."""
-    devices = targeted_devices(call.hass, call)
+    devices = targeted_devices(call.hass, dict(call.data))
     plans = plan_backups(call.hass, dict(call.data), devices)
     runs: list[dict[str, Any]] = []
     skipped: list[str] = []
