@@ -58,6 +58,7 @@ Legend: ✅ available · ➖ not available · text where it differs.
 | CPU as a share of the host | ➖ | ✅ |
 | Disk usage from the guest agent | ➖ | ✅ |
 | A file read from inside the guest | ➖ | ✅ |
+| Snapshot count with names | ➖ | ✅ |
 | HA managed | ➖ | ✅ with optional cluster credentials |
 
 ## Storage

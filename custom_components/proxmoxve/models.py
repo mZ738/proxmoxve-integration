@@ -78,6 +78,12 @@ class ProxmoxVMData:
     # two-core guest at 100% is one twelfth of a twelve-thread node.
     cpus: int | UndefinedType = UNDEFINED
     cpu_of_host: float | UndefinedType = UNDEFINED
+    # The guest's snapshots, from `.../snapshot`: how many there are (the
+    # `current` pseudo entry not counted), their names newest first, and
+    # when the newest was taken. Plain values: they are state attributes.
+    snapshots: int | UndefinedType = UNDEFINED
+    snapshot_names: list[str] | None = None
+    snapshot_latest: datetime | None = None
 
 
 @dataclasses.dataclass
@@ -106,6 +112,12 @@ class ProxmoxLXCData:
     # two-core guest at 100% is one twelfth of a twelve-thread node.
     cpus: int | UndefinedType = UNDEFINED
     cpu_of_host: float | UndefinedType = UNDEFINED
+    # The guest's snapshots, from `.../snapshot`: how many there are (the
+    # `current` pseudo entry not counted), their names newest first, and
+    # when the newest was taken. Plain values: they are state attributes.
+    snapshots: int | UndefinedType = UNDEFINED
+    snapshot_names: list[str] | None = None
+    snapshot_latest: datetime | None = None
 
 
 @dataclasses.dataclass

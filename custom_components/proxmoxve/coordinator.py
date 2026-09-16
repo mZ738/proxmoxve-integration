@@ -400,6 +400,32 @@ def _task_timestamp(value: Any) -> datetime | UndefinedType:
     return dt_util.utc_from_timestamp(value)
 
 
+def parse_snapshots(entries: Any) -> dict[str, Any]:
+    """
+    Count a guest's snapshots from `nodes/{node}/{qemu|lxc}/{vmid}/snapshot`.
+
+    The list always ends with a `current` pseudo entry standing for the
+    live state; it is not a snapshot and is left out. Names come newest
+    first; `snapshot_latest` is when the newest was taken.
+    """
+    if not isinstance(entries, list):
+        return {"snapshots": UNDEFINED, "snapshot_names": None, "snapshot_latest": None}
+    taken = [
+        entry
+        for entry in entries
+        if isinstance(entry, dict) and entry.get("name") not in (None, "current")
+    ]
+    taken.sort(key=lambda entry: entry.get("snaptime") or 0, reverse=True)
+    latest = next(
+        (entry.get("snaptime") for entry in taken if entry.get("snaptime")), None
+    )
+    return {
+        "snapshots": len(taken),
+        "snapshot_names": [str(entry["name"]) for entry in taken],
+        "snapshot_latest": dt_util.utc_from_timestamp(latest) if latest else None,
+    }
+
+
 def parse_running_backup(active: Any) -> dict[str, Any]:
     """Describe the vzdump run in progress, from the active task list."""
     tasks = [
@@ -1759,6 +1785,28 @@ class ProxmoxNodeCoordinator(ProxmoxCoordinator):
         raise UpdateFailed(msg)
 
 
+async def poll_snapshots(
+    coordinator: ProxmoxCoordinator, kind: ProxmoxType, node_name: str
+) -> dict[str, Any]:
+    """Read a guest's snapshot list; a failed read leaves the figures unknown."""
+    try:
+        entries = await coordinator.hass.async_add_executor_job(
+            partial(
+                poll_api,
+                coordinator.hass,
+                coordinator.config_entry,
+                coordinator.proxmox,
+                f"nodes/{node_name!s}/{kind}/{coordinator.resource_id}/snapshot",
+                kind,
+                coordinator.resource_id,
+                issue_crete_permissions=False,
+            )
+        )
+    except UpdateFailed:
+        entries = None
+    return parse_snapshots(entries)
+
+
 class ProxmoxQEMUCoordinator(ProxmoxCoordinator):
     """Proxmox VE QEMU data update coordinator."""
 
@@ -1941,6 +1989,8 @@ class ProxmoxQEMUCoordinator(ProxmoxCoordinator):
             except UpdateFailed:
                 pass
 
+        snapshots = await poll_snapshots(self, ProxmoxType.QEMU, node_name)
+
         update_device_via(self, ProxmoxType.QEMU, node_name)
 
         memory_total = api_status.get("maxmem", UNDEFINED)
@@ -1972,6 +2022,7 @@ class ProxmoxQEMUCoordinator(ProxmoxCoordinator):
             cpu_of_host=cpu_share_of_host(
                 api_status.get("cpu"), api_status.get("cpus"), node_cpus
             ),
+            **snapshots,
             memory_total=memory_total,
             memory_used=memory_used,
             memory_free=memory_free,
@@ -2066,6 +2117,8 @@ class ProxmoxLXCCoordinator(ProxmoxCoordinator):
             msg = f"LXC {self.resource_id} unable to be found"
             raise UpdateFailed(msg)
 
+        snapshots = await poll_snapshots(self, ProxmoxType.LXC, node_name)
+
         update_device_via(self, ProxmoxType.LXC, node_name)
 
         return ProxmoxLXCData(
@@ -2080,6 +2133,7 @@ class ProxmoxLXCCoordinator(ProxmoxCoordinator):
             cpu_of_host=cpu_share_of_host(
                 api_status.get("cpu"), api_status.get("cpus"), node_cpus
             ),
+            **snapshots,
             memory_total=api_status.get("maxmem", UNDEFINED),
             memory_used=api_status.get("mem", UNDEFINED),
             memory_free=(

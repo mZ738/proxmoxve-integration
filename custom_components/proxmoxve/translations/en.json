@@ -354,6 +354,17 @@
         "cpu_of_host": {
           "name": "CPU used of host"
         },
+        "snapshots": {
+          "name": "Snapshots",
+          "state_attributes": {
+            "snapshot_names": {
+              "name": "Snapshot names"
+            },
+            "snapshot_latest": {
+              "name": "Latest snapshot"
+            }
+          }
+        },
         "cpus": {
           "name": "CPUs"
         },

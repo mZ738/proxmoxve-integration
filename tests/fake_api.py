@@ -412,6 +412,19 @@ def default_routes() -> dict[str, Any]:
             ]
         },
         f"nodes/{NODE}/lxc/100/status/current": lxc_status(100, "lxc-test-100"),
+        # What `.../snapshot` lists: the snapshots, then the `current` pseudo
+        # entry for the live state, which is no snapshot.
+        f"nodes/{NODE}/qemu/101/snapshot": [
+            {
+                "name": "before-update",
+                "snaptime": 1_757_900_000,
+                "description": "Created by Home Assistant",
+                "vmstate": 0,
+            },
+            {"name": "clean-install", "snaptime": 1_757_000_000, "description": ""},
+            {"name": "current", "running": 1, "digest": "abc123"},
+        ],
+        f"nodes/{NODE}/lxc/100/snapshot": [{"name": "current", "digest": "def456"}],
     }
 
 
