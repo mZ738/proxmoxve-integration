@@ -30,12 +30,14 @@ from .const import (
     CONF_BACKUP_STORAGE,
     CONF_CONTAINERS,
     CONF_DISKS_ENABLE,
+    CONF_ENTITY_ID_PREFIX,
     CONF_GUEST_FILE_PATH,
     CONF_HA_ADMIN_PASSWORD,
     CONF_HA_ADMIN_REALM,
     CONF_HA_ADMIN_TOKEN_NAME,
     CONF_HA_ADMIN_USERNAME,
     CONF_LXC,
+    CONF_NEW_ENTITY_IDS,
     CONF_NODE,
     CONF_NODES,
     CONF_QEMU,
@@ -45,6 +47,7 @@ from .const import (
     CONF_TOKEN_NAME,
     CONF_VMS,
     COORDINATORS,
+    DEFAULT_ENTITY_ID_PREFIX,
     DEFAULT_PORT,
     DEFAULT_REALM,
     DEFAULT_VERIFY_SSL,
@@ -430,6 +433,20 @@ class ProxmoxOptionsFlowHandler(config_entries.OptionsFlow):
                                 mode=selector.SelectSelectorMode.DROPDOWN,
                             )
                         ),
+                        vol.Optional(
+                            CONF_NEW_ENTITY_IDS,
+                            default=self.config_entry.options.get(
+                                CONF_NEW_ENTITY_IDS, False
+                            ),
+                        ): selector.BooleanSelector(),
+                        vol.Optional(
+                            CONF_ENTITY_ID_PREFIX,
+                            description={
+                                "suggested_value": self.config_entry.options.get(
+                                    CONF_ENTITY_ID_PREFIX, DEFAULT_ENTITY_ID_PREFIX
+                                )
+                            },
+                        ): selector.TextSelector(),
                     }
                 ),
             )
@@ -455,6 +472,9 @@ class ProxmoxOptionsFlowHandler(config_entries.OptionsFlow):
             CONF_AUTO_DISCOVERY: user_input.get(CONF_AUTO_DISCOVERY, False),
             CONF_GUEST_FILE_PATH: user_input.get(CONF_GUEST_FILE_PATH, "").strip(),
             CONF_BACKUP_STORAGE: (user_input.get(CONF_BACKUP_STORAGE) or "").strip(),
+            CONF_NEW_ENTITY_IDS: user_input.get(CONF_NEW_ENTITY_IDS, False),
+            CONF_ENTITY_ID_PREFIX: (user_input.get(CONF_ENTITY_ID_PREFIX) or "").strip()
+            or DEFAULT_ENTITY_ID_PREFIX,
         }
 
         self.hass.config_entries.async_update_entry(
@@ -1086,6 +1106,14 @@ class ProxmoxVEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     CONF_AUTO_DISCOVERY,
                     default=False,
                 ): selector.BooleanSelector(),
+                vol.Optional(
+                    CONF_NEW_ENTITY_IDS,
+                    default=False,
+                ): selector.BooleanSelector(),
+                vol.Optional(
+                    CONF_ENTITY_ID_PREFIX,
+                    description={"suggested_value": DEFAULT_ENTITY_ID_PREFIX},
+                ): selector.TextSelector(),
             }
         )
 
@@ -1171,6 +1199,11 @@ class ProxmoxVEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_DISKS_ENABLE: user_input.get(CONF_DISKS_ENABLE),
                 CONF_TASKS_ENABLE: user_input.get(CONF_TASKS_ENABLE),
                 CONF_AUTO_DISCOVERY: user_input.get(CONF_AUTO_DISCOVERY, False),
+                CONF_NEW_ENTITY_IDS: user_input.get(CONF_NEW_ENTITY_IDS, False),
+                CONF_ENTITY_ID_PREFIX: (
+                    user_input.get(CONF_ENTITY_ID_PREFIX) or ""
+                ).strip()
+                or DEFAULT_ENTITY_ID_PREFIX,
             },
         )
 

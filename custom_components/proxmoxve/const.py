@@ -19,6 +19,10 @@ CONF_TASKS_ENABLE = "tasks_enable"
 # without a storage dumps into the node's local directory, which is never
 # what a button on a dashboard should do without being asked.
 CONF_BACKUP_STORAGE = "backup_storage"
+# The optional entity id scheme: a common prefix first, the id before the name.
+CONF_NEW_ENTITY_IDS = "new_entity_ids"
+CONF_ENTITY_ID_PREFIX = "entity_id_prefix"
+DEFAULT_ENTITY_ID_PREFIX = "pve"
 CONF_AUTO_DISCOVERY = "auto_discovery"
 CONF_GUEST_FILE_PATH = "guest_file_path"
 CONF_HA_ADMIN_USERNAME = "ha_admin_username"
