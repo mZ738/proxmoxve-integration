@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from homeassistant.components.automation.config import async_validate_config_item
 from homeassistant.components.blueprint import models
+from homeassistant.components.blueprint.schemas import BLUEPRINT_SCHEMA
 from homeassistant.core import HomeAssistant
 from homeassistant.util import yaml
 
@@ -16,7 +17,9 @@ BLUEPRINTS = Path(__file__).resolve().parent.parent / "blueprints"
 
 def _load(name: str) -> models.Blueprint:
     blueprint = models.Blueprint(
-        yaml.load_yaml(str(BLUEPRINTS / name)), expected_domain="automation"
+        yaml.load_yaml(str(BLUEPRINTS / name)),
+        expected_domain="automation",
+        schema=BLUEPRINT_SCHEMA,
     )
     blueprint.validate()
     return blueprint
