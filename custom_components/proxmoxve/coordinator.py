@@ -968,10 +968,17 @@ class SharedResources:
         config_entry: ConfigEntry,
         proxmox: ProxmoxAPI,
         resource_type: str | None = None,
+        *,
+        fresh: bool = False,
     ) -> list[dict[str, Any]] | None:
-        """Return the rows, read afresh when the last read is older than the TTL."""
+        """
+        Return the rows, read afresh when the last read is older than the TTL.
+
+        `fresh` reads regardless - for discovery, whose job is to notice
+        what changed; its read then serves the burst that follows.
+        """
         async with self._lock:
-            if time.monotonic() - self._read_at >= RESOURCES_TTL:
+            if fresh or time.monotonic() - self._read_at >= RESOURCES_TTL:
                 try:
                     rows = await hass.async_add_executor_job(
                         poll_api,
@@ -1075,7 +1082,7 @@ class ProxmoxDiscoveryCoordinator(
     async def _async_update_data(self) -> dict[str, list[str]]:
         """Compare the cluster's resource list with what is tracked."""
         resources = await shared_resources(self.hass, self.config_entry).get(
-            self.hass, self.config_entry, self.proxmox
+            self.hass, self.config_entry, self.proxmox, fresh=True
         )
 
         if not isinstance(resources, list):
