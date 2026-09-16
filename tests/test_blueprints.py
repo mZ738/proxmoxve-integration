@@ -31,9 +31,8 @@ async def _automation(hass: HomeAssistant, name: str, inputs: dict) -> dict:
         _load(name), {"use_blueprint": {"path": name, "input": inputs}}
     )
     filled.validate()
-    return await async_validate_config_item(
-        hass, "test", filled.async_substitute(), raise_on_errors=True
-    )
+    # Raises on anything wrong, as it does for the automation editor.
+    return await async_validate_config_item(hass, "test", filled.async_substitute())
 
 
 def test_every_blueprint_is_documented() -> None:
