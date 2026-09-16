@@ -24,7 +24,7 @@ With password authentication, a node that is off for longer than two hours used 
 
 ## Entity ids
 
-Home Assistant builds an entity id from the device name and the entity name: `sensor.qemu_docmost_109_cpu_used`, `sensor.node_pve_cpu_used`, `binary_sensor.storage_local_storage_active`. That puts the kind first and the guest's id last, and nothing in front by which a recorder filter or a search could catch everything of this integration. The option **Use the new entity id scheme** — on by default for a new setup, off for setups from before it existed, and in the integration options either way — changes the pattern to a common prefix first and the id before the name:
+Home Assistant builds an entity id from the device name and the entity name: `sensor.qemu_docmost_109_cpu_used`, `sensor.node_pve_cpu_used`, `binary_sensor.storage_local_storage_active`. That puts the kind first and the guest's id last, and nothing in front by which a recorder filter or a search could catch everything of this integration. That is the **standard** scheme. The option **Entity id scheme** — chosen when you set the integration up, changeable in the integration options; setups from before the option are on standard — offers an **extended** scheme with a common prefix first and the id before the name:
 
 | Device | Entity id |
 |---|---|
@@ -35,9 +35,9 @@ Home Assistant builds an entity id from the device name and the entity name: `se
 | Physical disk | `<prefix>_disk_<node>_<model>_<item>` |
 | ZFS pool | `<prefix>_zfs_<node>_<pool>_<item>` |
 
-`<prefix>` is `pve` unless you type another into **Prefix for the new entity id scheme**; `<item>` is the entity's translation key (`cpu_used`, `status_raw`, `backup_running`), so the ids read the same whatever language Home Assistant runs in. Sorted, a list of guests is now in vmid order; `pve_` in front of everything makes a recorder `include`/`exclude` a one-liner.
+`<prefix>` is `pve` unless you type another into **Prefix for the extended scheme**; `<item>` is the entity's translation key (`cpu_used`, `status_raw`, `backup_running`), so the ids read the same whatever language Home Assistant runs in. Sorted, a list of guests is now in vmid order; `pve_` in front of everything makes a recorder `include`/`exclude` a one-liner.
 
-**Nothing changes for entities that exist.** The scheme is a suggestion Home Assistant takes when it registers an entity for the first time; an entity that already has an id keeps it, however the switch is set, and there is no bulk rename — renaming ids would break every automation, dashboard and history that refers to them. A new setup has the switch on and every entity gets the new ids; a setup from before the option keeps the old ids, and turning the switch on there gives the new ids only to entities created from then on. To move a running install over, remove the integration and add it again (history is lost), or rename the entities you care about by hand.
+**Nothing changes for entities that exist.** The scheme is a suggestion Home Assistant takes when it registers an entity for the first time; an entity that already has an id keeps it, whatever the option says, and there is no bulk rename — renaming ids would break every automation, dashboard and history that refers to them. Choose extended when you set the integration up and every entity gets those ids; switch a running setup to extended and only entities created from then on do. To move a running install over, remove the integration and add it again (history is lost), or rename the entities you care about by hand.
 
 ## Disabled entities
 

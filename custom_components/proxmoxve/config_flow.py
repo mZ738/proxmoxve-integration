@@ -31,13 +31,13 @@ from .const import (
     CONF_CONTAINERS,
     CONF_DISKS_ENABLE,
     CONF_ENTITY_ID_PREFIX,
+    CONF_ENTITY_ID_SCHEME,
     CONF_GUEST_FILE_PATH,
     CONF_HA_ADMIN_PASSWORD,
     CONF_HA_ADMIN_REALM,
     CONF_HA_ADMIN_TOKEN_NAME,
     CONF_HA_ADMIN_USERNAME,
     CONF_LXC,
-    CONF_NEW_ENTITY_IDS,
     CONF_NODE,
     CONF_NODES,
     CONF_QEMU,
@@ -54,6 +54,8 @@ from .const import (
     DOMAIN,
     INTEGRATION_TITLE,
     LOGGER,
+    SCHEME_EXTENDED,
+    SCHEME_STANDARD,
     VERSION_REMOVE_YAML,
     ProxmoxType,
 )
@@ -106,6 +108,17 @@ SCHEMA_CLUSTER_HA_AUTH: vol.Schema = vol.Schema(
         vol.Optional(CONF_HA_ADMIN_REALM, default=DEFAULT_REALM): REALM_SELECTOR,
     }
 )
+
+
+def _entity_id_scheme_selector() -> selector.SelectSelector:
+    """Offer standard or extended entity ids as a translated pick-list."""
+    return selector.SelectSelector(
+        selector.SelectSelectorConfig(
+            options=[SCHEME_STANDARD, SCHEME_EXTENDED],
+            translation_key=CONF_ENTITY_ID_SCHEME,
+            mode=selector.SelectSelectorMode.DROPDOWN,
+        )
+    )
 
 
 class ProxmoxOptionsFlowHandler(config_entries.OptionsFlow):
@@ -433,12 +446,12 @@ class ProxmoxOptionsFlowHandler(config_entries.OptionsFlow):
                                 mode=selector.SelectSelectorMode.DROPDOWN,
                             )
                         ),
-                        vol.Optional(
-                            CONF_NEW_ENTITY_IDS,
+                        vol.Required(
+                            CONF_ENTITY_ID_SCHEME,
                             default=self.config_entry.options.get(
-                                CONF_NEW_ENTITY_IDS, False
+                                CONF_ENTITY_ID_SCHEME, SCHEME_STANDARD
                             ),
-                        ): selector.BooleanSelector(),
+                        ): _entity_id_scheme_selector(),
                         vol.Optional(
                             CONF_ENTITY_ID_PREFIX,
                             description={
@@ -472,7 +485,9 @@ class ProxmoxOptionsFlowHandler(config_entries.OptionsFlow):
             CONF_AUTO_DISCOVERY: user_input.get(CONF_AUTO_DISCOVERY, False),
             CONF_GUEST_FILE_PATH: user_input.get(CONF_GUEST_FILE_PATH, "").strip(),
             CONF_BACKUP_STORAGE: (user_input.get(CONF_BACKUP_STORAGE) or "").strip(),
-            CONF_NEW_ENTITY_IDS: user_input.get(CONF_NEW_ENTITY_IDS, False),
+            CONF_ENTITY_ID_SCHEME: user_input.get(
+                CONF_ENTITY_ID_SCHEME, SCHEME_STANDARD
+            ),
             CONF_ENTITY_ID_PREFIX: (user_input.get(CONF_ENTITY_ID_PREFIX) or "").strip()
             or DEFAULT_ENTITY_ID_PREFIX,
         }
@@ -1106,12 +1121,9 @@ class ProxmoxVEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     CONF_AUTO_DISCOVERY,
                     default=False,
                 ): selector.BooleanSelector(),
-                # On for a new setup: there are no ids yet to keep. Entries
-                # from before the option carry no value and stay as they are.
-                vol.Optional(
-                    CONF_NEW_ENTITY_IDS,
-                    default=True,
-                ): selector.BooleanSelector(),
+                # No default on purpose: the ids are set for good once the
+                # entities exist, so the choice is made here, knowingly.
+                vol.Required(CONF_ENTITY_ID_SCHEME): _entity_id_scheme_selector(),
                 vol.Optional(
                     CONF_ENTITY_ID_PREFIX,
                     description={"suggested_value": DEFAULT_ENTITY_ID_PREFIX},
@@ -1201,7 +1213,9 @@ class ProxmoxVEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_DISKS_ENABLE: user_input.get(CONF_DISKS_ENABLE),
                 CONF_TASKS_ENABLE: user_input.get(CONF_TASKS_ENABLE),
                 CONF_AUTO_DISCOVERY: user_input.get(CONF_AUTO_DISCOVERY, False),
-                CONF_NEW_ENTITY_IDS: user_input.get(CONF_NEW_ENTITY_IDS, True),
+                CONF_ENTITY_ID_SCHEME: user_input.get(
+                    CONF_ENTITY_ID_SCHEME, SCHEME_STANDARD
+                ),
                 CONF_ENTITY_ID_PREFIX: (
                     user_input.get(CONF_ENTITY_ID_PREFIX) or ""
                 ).strip()

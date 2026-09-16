@@ -19,8 +19,11 @@ CONF_TASKS_ENABLE = "tasks_enable"
 # without a storage dumps into the node's local directory, which is never
 # what a button on a dashboard should do without being asked.
 CONF_BACKUP_STORAGE = "backup_storage"
-# The optional entity id scheme: a common prefix first, the id before the name.
-CONF_NEW_ENTITY_IDS = "new_entity_ids"
+# How entity ids are built: Home Assistant's device-then-name, or the
+# extended scheme with a common prefix first and the id before the name.
+CONF_ENTITY_ID_SCHEME = "entity_id_scheme"
+SCHEME_STANDARD = "standard"
+SCHEME_EXTENDED = "extended"
 CONF_ENTITY_ID_PREFIX = "entity_id_prefix"
 DEFAULT_ENTITY_ID_PREFIX = "pve"
 CONF_AUTO_DISCOVERY = "auto_discovery"

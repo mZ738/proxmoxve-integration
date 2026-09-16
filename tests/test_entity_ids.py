@@ -5,8 +5,8 @@ Tests for the optional entity id scheme.
 
 Upstream #573 asked for a common prefix so the recorder and a search can
 catch everything of the integration; #604 asked for the id before the
-name so a list sorts by it. Both behind a switch that changes nothing for
-entities that already have an id.
+name so a list sorts by it. Both as the `extended` scheme, a choice that
+changes nothing for entities that already have an id.
 """
 
 import re
@@ -19,7 +19,8 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.proxmoxve import DOMAIN
 from custom_components.proxmoxve.const import (
     CONF_ENTITY_ID_PREFIX,
-    CONF_NEW_ENTITY_IDS,
+    CONF_ENTITY_ID_SCHEME,
+    SCHEME_EXTENDED,
 )
 from custom_components.proxmoxve.entity import scheme_object_id
 
@@ -110,10 +111,10 @@ def _entity_id(
     return entity_id
 
 
-async def test_without_the_switch_the_ids_are_home_assistants(
+async def test_the_standard_scheme_is_home_assistants(
     hass: HomeAssistant, fake_api: FakeProxmox, current_entry: MockConfigEntry
 ) -> None:
-    """Test the default is unchanged: device name first, no prefix."""
+    """Test an entry without the option - every existing one - keeps HA's ids."""
     await _setup(hass, current_entry)
 
     assert (
@@ -125,12 +126,13 @@ async def test_without_the_switch_the_ids_are_home_assistants(
     )
 
 
-async def test_with_the_switch_every_kind_of_entity_follows_the_scheme(
+async def test_the_extended_scheme_covers_every_kind_of_entity(
     hass: HomeAssistant, fake_api: FakeProxmox, current_entry: MockConfigEntry
 ) -> None:
     """Test node, guest, storage, disk, pool and cluster entities, and the update entity."""
     hass.config_entries.async_update_entry(
-        current_entry, options={**current_entry.options, CONF_NEW_ENTITY_IDS: True}
+        current_entry,
+        options={**current_entry.options, CONF_ENTITY_ID_SCHEME: SCHEME_EXTENDED},
     )
     await _setup(hass, current_entry)
 
@@ -180,7 +182,7 @@ async def test_the_prefix_option_is_used(
         current_entry,
         options={
             **current_entry.options,
-            CONF_NEW_ENTITY_IDS: True,
+            CONF_ENTITY_ID_SCHEME: SCHEME_EXTENDED,
             CONF_ENTITY_ID_PREFIX: "hv",
         },
     )
@@ -192,7 +194,7 @@ async def test_the_prefix_option_is_used(
     )
 
 
-async def test_turning_the_switch_on_later_leaves_existing_ids_alone(
+async def test_switching_to_extended_later_leaves_existing_ids_alone(
     hass: HomeAssistant, fake_api: FakeProxmox, current_entry: MockConfigEntry
 ) -> None:
     """
@@ -200,14 +202,15 @@ async def test_turning_the_switch_on_later_leaves_existing_ids_alone(
 
     An entity the registry knows keeps its id; only entities registered
     for the first time get the scheme. Nothing on a running install changes
-    by flipping the switch.
+    by changing the option.
     """
     await _setup(hass, current_entry)
     before = _entity_id(hass, current_entry, "sensor", f"{NODE}_cpu")
     assert before == "sensor.node_pve_cpu_used"
 
     hass.config_entries.async_update_entry(
-        current_entry, options={**current_entry.options, CONF_NEW_ENTITY_IDS: True}
+        current_entry,
+        options={**current_entry.options, CONF_ENTITY_ID_SCHEME: SCHEME_EXTENDED},
     )
     await hass.config_entries.async_reload(current_entry.entry_id)
     await hass.async_block_till_done()

@@ -7,8 +7,8 @@ Home Assistant builds an entity id from the device name and the entity
 name - `sensor.qemu_docmost_109_cpu_used`, `sensor.node_pve_cpu_used` -
 which puts the kind first and the id last, and nothing in front that
 would let a recorder filter or a search catch everything of this
-integration. The option **Use the new entity id scheme** puts a common
-prefix first and the id before the name:
+integration. That is the **standard** scheme. The **extended** scheme
+puts a common prefix first and the id before the name:
 
     <prefix>_cluster_<item>
     <prefix>_node_<node>_<item>
@@ -19,7 +19,7 @@ prefix first and the id before the name:
 `<item>` is the entity's translation key (or its English name), so the
 ids read the same in every language. The scheme is a suggestion Home Assistant takes when it
 registers an entity for the first time: entities that already have an id
-keep it, whatever the switch says.
+keep it, whatever the option says.
 """
 
 from __future__ import annotations
@@ -34,7 +34,12 @@ from homeassistant.helpers.update_coordinator import (
 )
 from homeassistant.util import slugify
 
-from .const import CONF_ENTITY_ID_PREFIX, CONF_NEW_ENTITY_IDS, DEFAULT_ENTITY_ID_PREFIX
+from .const import (
+    CONF_ENTITY_ID_PREFIX,
+    CONF_ENTITY_ID_SCHEME,
+    DEFAULT_ENTITY_ID_PREFIX,
+    SCHEME_EXTENDED,
+)
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -54,7 +59,7 @@ def scheme_object_id(
     guest_name: str | None = None,
 ) -> str:
     """
-    Build the object id of the new scheme from what the device identifier says.
+    Build the object id of the extended scheme from the device identifier.
 
     `identifier` is the device identifier without the entry id in front:
     `cluster`, `NODE_pve`, `QEMU_108`, `STORAGE_pve/local`, `STORAGE_nas`,
@@ -116,7 +121,7 @@ class ProxmoxEntity(CoordinatorEntity):
         parallel_updates: Any,
     ) -> None:
         """
-        Suggest the entity id of the new scheme, when the option asks for it.
+        Suggest the entity id of the extended scheme, when the option asks for it.
 
         This runs before Home Assistant picks an entity id. An entity the
         registry already knows keeps its id regardless; the suggestion only
@@ -132,7 +137,10 @@ class ProxmoxEntity(CoordinatorEntity):
 
     def _scheme_object_id(self) -> str | None:
         config_entry = getattr(self.coordinator, "config_entry", None)
-        if config_entry is None or not config_entry.options.get(CONF_NEW_ENTITY_IDS):
+        if (
+            config_entry is None
+            or config_entry.options.get(CONF_ENTITY_ID_SCHEME) != SCHEME_EXTENDED
+        ):
             return None
         info = self.device_info or {}
         identifier = next(

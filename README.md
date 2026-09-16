@@ -77,7 +77,7 @@ Everything beyond the credentials lives in the integration options (Settings →
 - **Track everything automatically** — [discovery](https://github.com/dougiteixeira/proxmoxve/blob/main/docs/behaviour.md#tracking-everything-automatically): follow the cluster instead of a fixed selection.
 - **Guest file path to monitor** — the [guest file content sensor](https://github.com/dougiteixeira/proxmoxve/blob/main/docs/entities.md#guest-file-content-sensor).
 - **Backup storage for the backup buttons** — the [backup buttons](https://github.com/dougiteixeira/proxmoxve/blob/main/docs/actions.md#backup-buttons) exist only while this is set.
-- **Use the new entity id scheme** and its **prefix** — entity ids as `pve_<kind>_<id>_<name>_<item>`; on for new setups, off for older ones, and existing ids never change ([details](https://github.com/dougiteixeira/proxmoxve/blob/main/docs/behaviour.md#entity-ids)).
+- **Entity id scheme** — standard (Home Assistant's device then name) or extended (`pve_<kind>_<id>_<name>_<item>`, with the prefix of your choice); chosen at setup, existing ids never change ([details](https://github.com/dougiteixeira/proxmoxve/blob/main/docs/behaviour.md#entity-ids)).
 - **Optional: cluster HA administration** — a second set of credentials for the [cluster-wide features](https://github.com/dougiteixeira/proxmoxve/blob/main/docs/entities.md#cluster-ha-administration-advanced-optional).
 
 ## Permissions
