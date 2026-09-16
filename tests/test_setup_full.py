@@ -21,12 +21,10 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.proxmoxve import DOMAIN
 from custom_components.proxmoxve.const import (
-    CONF_DISKS_ENABLE,
     CONF_LXC,
     CONF_NODES,
     CONF_QEMU,
     CONF_STORAGE,
-    CONF_TASKS_ENABLE,
     CONF_UPDATES_ENABLE,
     COORDINATORS,
     ProxmoxType,
@@ -371,8 +369,6 @@ async def test_deselecting_the_node_removes_its_disk_and_pool_devices(
             CONF_QEMU: ["101"],
             CONF_LXC: ["100"],
             CONF_STORAGE: [],
-            CONF_DISKS_ENABLE: True,
-            CONF_TASKS_ENABLE: True,
         },
     )
     await hass.async_block_till_done()

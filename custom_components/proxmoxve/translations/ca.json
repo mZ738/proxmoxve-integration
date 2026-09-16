@@ -20,12 +20,10 @@
                     "qemu": "Maquines Virtuals (QEMU)",
                     "lxc": "Contenidors Linux (LXC)",
                     "storage": "Emmagatzematges",
-                    "disks_enable": "Habilita la informació del disc físic",
-                    "tasks_enable": "Monitor failed tasks"
+                    "disks_enable": "Habilita la informació del disc físic"
                 },
                 "data_description": {
-                    "disks_enable": "Si treballeu amb hibernació de disc, heu de desactivar aquesta opció d'integració perquè no faci que els discs es reactivin indegudament.",
-                    "tasks_enable": "Track and report failed tasks from the last 24 hours on selected nodes."
+                    "disks_enable": "Si treballeu amb hibernació de disc, heu de desactivar aquesta opció d'integració perquè no faci que els discs es reactivin indegudament."
                 }
             },
             "reauth_confirm": {
@@ -149,16 +147,22 @@
                     "lxc": "Contenidors Linux (LXC)",
                     "nodes": "Nodes",
                     "qemu": "Maquines Virtuals (QEMU)",
-                    "storage": "Emmagatzematges",
+                    "storage": "Emmagatzematges"
+                },
+                "data_description": {
+                }
+            },
+            "advanced": {
+               "data": {
                     "disks_enable": "Habilita la informació del disc físic",
                     "tasks_enable": "Monitor failed tasks",
                     "guest_file_path": "Guest file path to monitor (QEMU, requires guest agent)"
-                },
-                "data_description": {
+               },
+               "data_description": {
                     "disks_enable": "Si treballeu amb hibernació de disc, heu de desactivar aquesta opció d'integració perquè no faci que els discs es reactivin indegudament.",
                     "tasks_enable": "Track and report failed tasks from the last 24 hours on selected nodes.",
                     "guest_file_path": "Absolute path of a file inside each tracked QEMU guest to read via the guest agent and expose as a sensor. Leave empty to disable. Requires the QEMU guest agent to be running in the guest."
-                }
+               }
             }
         },
         "error": {

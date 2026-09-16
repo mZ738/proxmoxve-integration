@@ -40,8 +40,8 @@ from .const import (
     CURRENT_ENTRY_DATA,
     CURRENT_ENTRY_VERSION,
     MOCK_GET_RESPONSE,
+    OPTIONS_INPUT_SELECTION,
     USER_INPUT_OPTION_AUTH,
-    USER_INPUT_SELECTION,
     mock_config_entry,
 )
 
@@ -196,7 +196,7 @@ async def test_options_flow_change_expose(hass: HomeAssistant) -> None:
 
             result = await hass.config_entries.options.async_configure(
                 result["flow_id"],
-                user_input=USER_INPUT_SELECTION,
+                user_input=OPTIONS_INPUT_SELECTION,
             )
 
             assert result["type"] == FlowResultType.ABORT

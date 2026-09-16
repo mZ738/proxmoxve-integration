@@ -20,12 +20,10 @@
                     "qemu": "Máquinas Virtuais (QEMU)",
                     "lxc": "Contentores Linux (LXC)",
                     "storage": "Armazenamentos",
-                    "disks_enable": "Ativar informação dos discos físicos",
-                    "tasks_enable": "Monitor failed tasks"
+                    "disks_enable": "Ativar informação dos discos físicos"
                 },
                 "data_description": {
-                    "disks_enable": "Se utilizar hibernação de discos, deve desativar esta opção para que os discos não sejam reativados indevidamente.",
-                    "tasks_enable": "Track and report failed tasks from the last 24 hours on selected nodes."
+                    "disks_enable": "Se utilizar hibernação de discos, deve desativar esta opção para que os discos não sejam reativados indevidamente."
                 }
             },
             "reauth_confirm": {
@@ -149,16 +147,22 @@
                     "lxc": "Contentores Linux (LXC)",
                     "nodes": "Nós",
                     "qemu": "Máquinas Virtuais (QEMU)",
-                    "storage": "Armazenamentos",
+                    "storage": "Armazenamentos"
+                },
+                "data_description": {
+                }
+            },
+            "advanced": {
+               "data": {
                     "disks_enable": "Ativar informação dos discos físicos",
                     "tasks_enable": "Monitor failed tasks",
                     "guest_file_path": "Guest file path to monitor (QEMU, requires guest agent)"
-                },
-                "data_description": {
+               },
+               "data_description": {
                     "disks_enable": "Se utilizar hibernação de discos, deve desativar esta opção para que os discos não sejam reativados indevidamente.",
                     "tasks_enable": "Track and report failed tasks from the last 24 hours on selected nodes.",
                     "guest_file_path": "Absolute path of a file inside each tracked QEMU guest to read via the guest agent and expose as a sensor. Leave empty to disable. Requires the QEMU guest agent to be running in the guest."
-                }
+               }
             }
         },
         "error": {

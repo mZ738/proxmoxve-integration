@@ -20,12 +20,10 @@
                     "qemu": "Maquinas Virtuais (QEMU)",
                     "lxc": "Contêiners Linux (LXC)",
                     "storage": "Armazenamentos",
-                    "disks_enable": "Habilitar informações dos discos físicos",
-                    "tasks_enable": "Monitorar tarefas que falharam"
+                    "disks_enable": "Habilitar informações dos discos físicos"
                 },
                 "data_description": {
-                    "disks_enable": "Se você trabalha com a hibernação dos discos, você deverá desabilitar esta opção da integração para que não cause a reativação dos discos indevidamente.",
-                    "tasks_enable": "Rastrear e reportar tarefas que falharam nas últimas 24 horas nos nós selecionados."
+                    "disks_enable": "Se você trabalha com a hibernação dos discos, você deverá desabilitar esta opção da integração para que não cause a reativação dos discos indevidamente."
                 }
             },
             "reauth_confirm": {
@@ -149,16 +147,22 @@
                     "lxc": "Contêiners Linux (LXC)",
                     "nodes": "Nós",
                     "qemu": "Maquinas Virtuais (QEMU)",
-                    "storage": "Armazenamentos",
+                    "storage": "Armazenamentos"
+                },
+                "data_description": {
+                }
+            },
+            "advanced": {
+               "data": {
                     "disks_enable": "Habilitar informações dos discos físicos",
                     "tasks_enable": "Monitorar tarefas que falharam",
                     "guest_file_path": "Guest file path to monitor (QEMU, requires guest agent)"
-                },
-                "data_description": {
+               },
+               "data_description": {
                     "disks_enable": "Se você trabalha com a hibernação dos discos, você deverá desabilitar esta opção da integração para que não cause a reativação dos discos indevidamente.",
                     "tasks_enable": "Rastrear e reportar tarefas que falharam nas últimas 24 horas nos nós selecionados.",
                     "guest_file_path": "Absolute path of a file inside each tracked QEMU guest to read via the guest agent and expose as a sensor. Leave empty to disable. Requires the QEMU guest agent to be running in the guest."
-                }
+               }
             }
         },
         "error": {

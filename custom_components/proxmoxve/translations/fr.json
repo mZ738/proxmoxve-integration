@@ -20,12 +20,10 @@
                     "qemu": "Machines virtuelles (QEMU)",
                     "lxc": "Conteneurs Linux (LXC)",
                     "storage": "Stockages",
-                    "disks_enable": "Activer les informations sur les disques physiques",
-                    "tasks_enable": "Surveiller les tâches échouées"
+                    "disks_enable": "Activer les informations sur les disques physiques"
                 },
                 "data_description": {
-                    "disks_enable": "Si vous utilisez l'hibernation des disques, vous devez désactiver cette option de l'intégration afin qu'elle ne provoque pas une réactivation intempestive des disques.",
-                    "tasks_enable": "Suivre et rapporter les tâches échouées des dernières 24 heures sur les nœuds sélectionnés."
+                    "disks_enable": "Si vous utilisez l'hibernation des disques, vous devez désactiver cette option de l'intégration afin qu'elle ne provoque pas une réactivation intempestive des disques."
                 }
             },
             "reauth_confirm": {
@@ -149,16 +147,22 @@
                     "lxc": "Conteneurs Linux (LXC)",
                     "nodes": "Nœuds",
                     "qemu": "Machines virtuelles (QEMU)",
-                    "storage": "Stockages",
+                    "storage": "Stockages"
+                },
+                "data_description": {
+                }
+            },
+            "advanced": {
+               "data": {
                     "disks_enable": "Activer les informations du disque physique",
                     "tasks_enable": "Surveiller les tâches échouées",
                     "guest_file_path": "Guest file path to monitor (QEMU, requires guest agent)"
-                },
-                "data_description": {
+               },
+               "data_description": {
                     "disks_enable": "Si vous avez activé la mise en veille des disques durs, vous devriez désactiver cette option pour éviter que l'intégration les relance de manière intempestive.",
                     "tasks_enable": "Suivre et rapporter les tâches échouées des dernières 24 heures sur les nœuds sélectionnés.",
                     "guest_file_path": "Absolute path of a file inside each tracked QEMU guest to read via the guest agent and expose as a sensor. Leave empty to disable. Requires the QEMU guest agent to be running in the guest."
-                }
+               }
             }
         },
         "error": {

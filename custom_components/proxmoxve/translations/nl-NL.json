@@ -20,12 +20,10 @@
                     "qemu": "Virtuele Machines (QEMU)",
                     "lxc": "Linux Containers (LXC)",
                     "storage": "Opslagruimtes",
-                    "disks_enable": "Schakel fysieke schijfinformatie in",
-                    "tasks_enable": "Monitor mislukte taken"
+                    "disks_enable": "Schakel fysieke schijfinformatie in"
                 },
                 "data_description": {
-                    "disks_enable": "Als je met disk hybernation werkt, moet je deze integratie-optie uitschakelen zodat de schijven niet onnodig worden gereactiveerd.",
-                    "tasks_enable": "Bijhouden en rapporteren van mislukte taken van de afgelopen 24 uur op geselecteerde nodes."
+                    "disks_enable": "Als je met disk hybernation werkt, moet je deze integratie-optie uitschakelen zodat de schijven niet onnodig worden gereactiveerd."
                 }
             },
             "reauth_confirm": {
@@ -149,16 +147,22 @@
                     "lxc": "Linux Containers (LXC)",
                     "nodes": "Nodes",
                     "qemu": "Virtuele Machines (QEMU)",
-                    "storage": "Opslagruimtes",
+                    "storage": "Opslagruimtes"
+                },
+                "data_description": {
+                }
+            },
+            "advanced": {
+               "data": {
                     "disks_enable": "Schakel fysieke schijfinformatie in",
                     "tasks_enable": "Monitor mislukte taken",
                     "guest_file_path": "Guest file path to monitor (QEMU, requires guest agent)"
-                },
-                "data_description": {
+               },
+               "data_description": {
                     "disks_enable": "Als je met disk hybernation werkt, moet je deze integratie-optie uitschakelen zodat de schijven niet onnodig worden gereactiveerd.",
                     "tasks_enable": "Bijhouden en rapporteren van mislukte taken van de afgelopen 24 uur op geselecteerde knooppunten.",
                     "guest_file_path": "Absolute path of a file inside each tracked QEMU guest to read via the guest agent and expose as a sensor. Leave empty to disable. Requires the QEMU guest agent to be running in the guest."
-                }
+               }
             }
         },
         "error": {

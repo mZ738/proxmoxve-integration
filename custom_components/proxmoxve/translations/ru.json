@@ -20,12 +20,10 @@
                     "qemu": "Виртуальные машины (QEMU)",
                     "lxc": "Контейнеры Linux (LXC)",
                     "storage": "Хранилища",
-                    "disks_enable": "Включить мониторинг физических дисков",
-                    "tasks_enable": "Monitor failed tasks"
+                    "disks_enable": "Включить мониторинг физических дисков"
                 },
                 "data_description": {
-                    "disks_enable": "При использовании гибернации дисков отключите эту опцию, чтобы предотвратить их нежелательное пробуждение.",
-                    "tasks_enable": "Track and report failed tasks from the last 24 hours on selected nodes."
+                    "disks_enable": "При использовании гибернации дисков отключите эту опцию, чтобы предотвратить их нежелательное пробуждение."
                 }
             },
             "reauth_confirm": {
@@ -149,16 +147,22 @@
                     "lxc": "Контейнеры Linux (LXC)",
                     "nodes": "Ноды",
                     "qemu": "Виртуальные машины (QEMU)",
-                    "storage": "Хранилища",
+                    "storage": "Хранилища"
+                },
+                "data_description": {
+                }
+            },
+            "advanced": {
+               "data": {
                     "disks_enable": "Включить мониторинг физических дисков",
                     "tasks_enable": "Monitor failed tasks",
                     "guest_file_path": "Guest file path to monitor (QEMU, requires guest agent)"
-                },
-                "data_description": {
+               },
+               "data_description": {
                     "disks_enable": "При использовании гибернации дисков отключите эту опцию, чтобы предотвратить их нежелательное пробуждение.",
                     "tasks_enable": "Track and report failed tasks from the last 24 hours on selected nodes.",
                     "guest_file_path": "Absolute path of a file inside each tracked QEMU guest to read via the guest agent and expose as a sensor. Leave empty to disable. Requires the QEMU guest agent to be running in the guest."
-                }
+               }
             }
         },
         "error": {

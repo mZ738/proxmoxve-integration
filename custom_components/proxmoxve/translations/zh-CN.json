@@ -20,12 +20,10 @@
                     "qemu": "虚拟机 (QEMU)",
                     "lxc": "Linux 容器 (LXC)",
                     "storage": "存储",
-                    "disks_enable": "启用物理磁盘监控",
-                    "tasks_enable": "监控任务失败"
+                    "disks_enable": "启用物理磁盘监控"
                 },
                 "data_description": {
-                    "disks_enable": "若使用磁盘休眠功能，请禁用此选项以避免意外唤醒磁盘。",
-                    "tasks_enable": "监测并报告过去 24 小时内选定节点的失败任务。"
+                    "disks_enable": "若使用磁盘休眠功能，请禁用此选项以避免意外唤醒磁盘。"
                 }
             },
             "reauth_confirm": {
@@ -149,16 +147,22 @@
                     "lxc": "Linux 容器 (LXC)",
                     "nodes": "节点",
                     "qemu": "虚拟机 (QEMU)",
-                    "storage": "存储",
+                    "storage": "存储"
+                },
+                "data_description": {
+                }
+            },
+            "advanced": {
+               "data": {
                     "disks_enable": "启用物理磁盘监控",
                     "tasks_enable": "监控任务失败",
                     "guest_file_path": "Guest file path to monitor (QEMU, requires guest agent)"
-                },
-                "data_description": {
+               },
+               "data_description": {
                     "disks_enable": "若使用磁盘休眠功能，请禁用此选项以避免意外唤醒磁盘。",
                     "tasks_enable": "监测并报告过去 24 小时内选定节点的失败任务。",
                     "guest_file_path": "Absolute path of a file inside each tracked QEMU guest to read via the guest agent and expose as a sensor. Leave empty to disable. Requires the QEMU guest agent to be running in the guest."
-                }
+               }
             }
         },
         "error": {
