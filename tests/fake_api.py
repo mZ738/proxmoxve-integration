@@ -170,11 +170,6 @@ def default_routes() -> dict[str, Any]:
             STORAGE_EXT_PVE2,
             {"id": f"sdn/{NODE}/localnetwork", "type": "sdn", "node": NODE},
         ],
-        "cluster/resources?type=storage": [
-            STORAGE_LOCAL,
-            STORAGE_EXT,
-            STORAGE_EXT_PVE2,
-        ],
         "access/permissions": {
             "/": {
                 "Sys.Audit": 1,

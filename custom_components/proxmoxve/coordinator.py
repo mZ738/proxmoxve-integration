@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 import json
 import re
@@ -934,6 +935,78 @@ class CurrentApiMixin:
         self._proxmox = proxmox
 
 
+RESOURCES_CACHE = "resources_cache"
+# How long one `cluster/resources` read serves every coordinator of an
+# entry. They all poll on the same 60 s interval and were started within
+# seconds of each other, so one read per burst is enough; well under the
+# interval, so the next burst reads afresh.
+RESOURCES_TTL: Final = 15.0
+
+
+class SharedResources:
+    """
+    One `cluster/resources` read per poll burst, shared by an entry's coordinators.
+
+    Every VM, container and storage coordinator, the cluster summary and
+    discovery used to read the same list themselves - forty identical
+    requests a minute on a modest cluster, the first thing a slow API
+    chokes on. The first caller of a burst reads; the others wait for it
+    and take the result. A failure is shared the same way, so a dead host
+    is hit once per burst, not once per coordinator.
+    """
+
+    def __init__(self) -> None:
+        """Start with nothing read."""
+        self._lock = asyncio.Lock()
+        self._read_at: float = -RESOURCES_TTL
+        self._rows: list[dict[str, Any]] | None = None
+        self._failure: str | None = None
+
+    async def get(
+        self,
+        hass: HomeAssistant,
+        config_entry: ConfigEntry,
+        proxmox: ProxmoxAPI,
+        resource_type: str | None = None,
+    ) -> list[dict[str, Any]] | None:
+        """Return the rows, read afresh when the last read is older than the TTL."""
+        async with self._lock:
+            if time.monotonic() - self._read_at >= RESOURCES_TTL:
+                try:
+                    rows = await hass.async_add_executor_job(
+                        poll_api,
+                        hass,
+                        config_entry,
+                        proxmox,
+                        "cluster/resources",
+                        ProxmoxType.Resources,
+                        None,
+                    )
+                except UpdateFailed as error:
+                    self._rows, self._failure = None, str(error)
+                else:
+                    self._rows = rows if isinstance(rows, list) else None
+                    self._failure = (
+                        None if isinstance(rows, list) or rows is None else ""
+                    )
+                self._read_at = time.monotonic()
+        if self._failure is not None:
+            raise UpdateFailed(self._failure or "Cluster resources are not available")
+        if self._rows is None or resource_type is None:
+            return self._rows
+        return [row for row in self._rows if row.get("type") == resource_type]
+
+    def forget(self) -> None:
+        """Make the next caller read again - after something changed the cluster."""
+        self._read_at = -RESOURCES_TTL
+
+
+def shared_resources(hass: HomeAssistant, config_entry: ConfigEntry) -> SharedResources:
+    """Return the entry's shared resource read, creating it on first use."""
+    store = hass.data.setdefault(DOMAIN, {}).setdefault(RESOURCES_CACHE, {})
+    return store.setdefault(config_entry.entry_id, SharedResources())
+
+
 class ProxmoxCoordinator(
     CurrentApiMixin,
     DataUpdateCoordinator[
@@ -1001,14 +1074,8 @@ class ProxmoxDiscoveryCoordinator(
 
     async def _async_update_data(self) -> dict[str, list[str]]:
         """Compare the cluster's resource list with what is tracked."""
-        resources = await self.hass.async_add_executor_job(
-            poll_api,
-            self.hass,
-            self.config_entry,
-            self.proxmox,
-            "cluster/resources",
-            ProxmoxType.Resources,
-            self.resource_id,
+        resources = await shared_resources(self.hass, self.config_entry).get(
+            self.hass, self.config_entry, self.proxmox
         )
 
         if not isinstance(resources, list):
@@ -1174,14 +1241,8 @@ class ProxmoxClusterSummaryCoordinator(ProxmoxCoordinator):
 
     async def _async_update_data(self) -> ProxmoxClusterSummaryData:
         """Add up the cluster's resource list."""
-        resources = await self.hass.async_add_executor_job(
-            poll_api,
-            self.hass,
-            self.config_entry,
-            self.proxmox,
-            "cluster/resources",
-            ProxmoxType.Resources,
-            None,
+        resources = await shared_resources(self.hass, self.config_entry).get(
+            self.hass, self.config_entry, self.proxmox
         )
         if resources is None:
             msg = "The cluster's resource list is not available"
@@ -1931,15 +1992,8 @@ class ProxmoxQEMUCoordinator(ProxmoxCoordinator):
         node_name = None
         api_status = None
 
-        api_path = "cluster/resources"
-        resources = await self.hass.async_add_executor_job(
-            poll_api,
-            self.hass,
-            self.config_entry,
-            self.proxmox,
-            api_path,
-            ProxmoxType.Resources,
-            None,
+        resources = await shared_resources(self.hass, self.config_entry).get(
+            self.hass, self.config_entry, self.proxmox
         )
 
         node_cpus: Any = UNDEFINED
@@ -2150,15 +2204,8 @@ class ProxmoxLXCCoordinator(ProxmoxCoordinator):
         node_name = None
         api_status = None
 
-        api_path = "cluster/resources"
-        resources = await self.hass.async_add_executor_job(
-            poll_api,
-            self.hass,
-            self.config_entry,
-            self.proxmox,
-            api_path,
-            ProxmoxType.Resources,
-            None,
+        resources = await shared_resources(self.hass, self.config_entry).get(
+            self.hass, self.config_entry, self.proxmox
         )
 
         node_cpus: Any = UNDEFINED
@@ -2291,15 +2338,8 @@ class ProxmoxStorageCoordinator(ProxmoxCoordinator):
         figures; the row of a node that currently sees it as available is
         used, and every such node is carried along.
         """
-        api_path = "cluster/resources?type=storage"
-        api_storages = await self.hass.async_add_executor_job(
-            poll_api,
-            self.hass,
-            self.config_entry,
-            self.proxmox,
-            api_path,
-            ProxmoxType.Storage,
-            self.resource_id,
+        api_storages = await shared_resources(self.hass, self.config_entry).get(
+            self.hass, self.config_entry, self.proxmox, resource_type="storage"
         )
         rows = storage_entries(api_storages)
 

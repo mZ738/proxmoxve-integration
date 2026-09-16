@@ -81,6 +81,7 @@ from .const import (
 )
 from .coordinator import (
     GUEST_AGENT_PRIVILEGES,
+    RESOURCES_CACHE,
     ProxmoxBackupCoordinator,
     ProxmoxBackupInfoCoordinator,
     ProxmoxCephCoordinator,
@@ -1330,6 +1331,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     for feature in GUEST_AGENT_PRIVILEGES:
         ir.async_delete_issue(hass, DOMAIN, f"{entry.entry_id}_guest_agent_{feature}")
     forget_entry(hass, entry.entry_id)
+    hass.data.get(DOMAIN, {}).get(RESOURCES_CACHE, {}).pop(entry.entry_id, None)
     return unload_ok
 
 
