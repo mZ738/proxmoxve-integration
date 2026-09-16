@@ -3,6 +3,7 @@
 """Tests for the blueprints shipped in `blueprints/`, loaded the way Home Assistant does."""
 
 import re
+from datetime import time
 from pathlib import Path
 
 import pytest
@@ -53,7 +54,7 @@ async def test_the_scheduled_backup_fills_in_with_the_two_required_fields(
         hass, "backup_scheduled.yaml", {"node": "pve", "storage": "nas"}
     )
 
-    assert config["triggers"][0]["at"] == "03:00:00"
+    assert config["triggers"][0]["at"] == [time(3, 0)]
     assert config["conditions"][0]["weekday"] == [
         "mon",
         "tue",
