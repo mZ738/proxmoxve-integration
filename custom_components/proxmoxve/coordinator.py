@@ -139,12 +139,15 @@ def note_guest_agent_refusal(
     """
     Keep the one repair per entry and feature in step with the VMs refused.
 
-    The VMs concerned are kept on the entry's runtime data; the repair is
-    rewritten with the current list whenever it changes, and removed once
-    no VM is left on it.
+    The VMs concerned are kept in `hass.data`, per entry - the runtime
+    data is not there yet while the coordinators take their first refresh
+    during setup. The repair is rewritten with the current list whenever
+    it changes, and removed once no VM is left on it.
     """
-    refusals: dict[str, set[int]] = config_entry.runtime_data.setdefault(
-        GUEST_AGENT_REFUSALS, {}
+    refusals: dict[str, set[int]] = (
+        hass.data.setdefault(DOMAIN, {})
+        .setdefault(GUEST_AGENT_REFUSALS, {})
+        .setdefault(config_entry.entry_id, {})
     )
     affected = refusals.setdefault(feature, set())
     if refused == (vmid in affected):
