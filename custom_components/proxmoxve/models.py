@@ -84,6 +84,14 @@ class ProxmoxVMData:
     snapshots: int | UndefinedType = UNDEFINED
     snapshot_names: list[str] | None = None
     snapshot_latest: datetime | None = None
+    # Whether the QEMU guest agent answers: UNDEFINED when it is not
+    # configured for the VM or the credentials may not ask it.
+    agent_running: bool | UndefinedType = UNDEFINED
+    # The guest's addresses as the agent (VM) or the container reports
+    # them: the address to show, every address, and them by interface.
+    ip_address: str | UndefinedType = UNDEFINED
+    ip_addresses: list[str] | None = None
+    interfaces: dict[str, list[str]] | None = None
 
 
 @dataclasses.dataclass
@@ -118,6 +126,9 @@ class ProxmoxLXCData:
     snapshots: int | UndefinedType = UNDEFINED
     snapshot_names: list[str] | None = None
     snapshot_latest: datetime | None = None
+    ip_address: str | UndefinedType = UNDEFINED
+    ip_addresses: list[str] | None = None
+    interfaces: dict[str, list[str]] | None = None
 
 
 @dataclasses.dataclass

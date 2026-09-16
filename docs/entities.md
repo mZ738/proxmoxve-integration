@@ -150,6 +150,10 @@ A guest's `CPU used` is relative to its own cores: a two-core guest at 100 % and
 
 A VM's disk usage comes from inside the guest, through the QEMU guest agent's file system list, because the host only knows the size of the virtual disks. That read needs `VM.GuestAgent.Audit` on the guest since Proxmox VE 9 (`VM.Monitor` before) — a privilege `VM.Audit` does not include, though the built-in `PVEAuditor` role carries it. Without it one warning repair names the privilege and the VMs concerned, and the sensor falls back to what the host sees, which for most VMs is nothing.
 
+**`IP address`** — the guest's address, with every address and them by interface as attributes; loopback and link-local are left out, the first IPv4 is shown (the first IPv6 when there is none). A VM reports through the QEMU guest agent (`agent/network-get-interfaces`, `VM.GuestAgent.Audit` on Proxmox VE 9), a container through its own interface list (`VM.Audit`). Diagnostic; created once the address could be read, so a guest that is off at the first start gets it at the next reload.
+
+**`Guest agent`** — for VMs with the agent configured: on while the agent answers, off when it does not (agent not running, VM off). Diagnostic. Whether the agent is configured at all is what decides if the sensor exists.
+
 **`Snapshots`** — how many snapshots the guest has, with their names (newest first) and when the newest was taken as attributes; read from the guest's snapshot list, the `current` pseudo entry not counted. Diagnostic, **disabled by default**. Pairs with the `Create snapshot` button.
 
 A container that is not running reports its disk usage as *unknown* rather than 0 % used and 100 % free: Proxmox cannot look inside a stopped container and reports `disk: 0`, but the data is still on the volume. Memory and swap stay at 0 % for a stopped guest, because those really are zero.

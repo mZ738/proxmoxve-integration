@@ -238,6 +238,9 @@
         "locked": {
           "name": "Locked"
         },
+        "guest_agent": {
+          "name": "Guest agent"
+        },
         "update_avail": {
           "name": "Updates packages"
         },
@@ -353,6 +356,17 @@
         },
         "cpu_of_host": {
           "name": "CPU used of host"
+        },
+        "ip_address": {
+          "name": "IP address",
+          "state_attributes": {
+            "ip_addresses": {
+              "name": "IP addresses"
+            },
+            "interfaces": {
+              "name": "Interfaces"
+            }
+          }
         },
         "snapshots": {
           "name": "Snapshots",

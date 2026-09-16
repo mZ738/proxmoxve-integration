@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import re
 import time
@@ -398,6 +399,57 @@ def _task_timestamp(value: Any) -> datetime | UndefinedType:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return UNDEFINED
     return dt_util.utc_from_timestamp(value)
+
+
+def _shown_address(address: str) -> bool:
+    """Tell an address worth showing from loopback and link-local noise."""
+    try:
+        parsed = ipaddress.ip_address(address)
+    except ValueError:
+        return False
+    return not (parsed.is_loopback or parsed.is_link_local or parsed.is_unspecified)
+
+
+def parse_guest_addresses(kind: ProxmoxType, payload: Any) -> dict[str, Any]:
+    """
+    Read a guest's addresses from what the agent or the container reports.
+
+    A VM's agent (`agent/network-get-interfaces`) lists interfaces with
+    `ip-addresses` entries; a container (`lxc/{vmid}/interfaces`) lists
+    them with `inet`/`inet6` strings carrying the prefix. Loopback and
+    link-local addresses are left out; the address shown is the first
+    IPv4 in interface order, or the first IPv6 when there is none.
+    """
+    unknown = {"ip_address": UNDEFINED, "ip_addresses": None, "interfaces": None}
+    entries = payload.get("result") if isinstance(payload, dict) else payload
+    if not isinstance(entries, list):
+        return unknown
+    interfaces: dict[str, list[str]] = {}
+    for entry in entries:
+        if not isinstance(entry, dict) or not (name := entry.get("name")):
+            continue
+        if kind is ProxmoxType.QEMU:
+            found = [
+                str(item["ip-address"])
+                for item in entry.get("ip-addresses") or []
+                if isinstance(item, dict) and item.get("ip-address")
+            ]
+        else:
+            found = [
+                str(entry[key]).split("/", 1)[0]
+                for key in ("inet", "inet6")
+                if entry.get(key)
+            ]
+        shown = [address for address in found if _shown_address(address)]
+        if shown:
+            interfaces[str(name)] = shown
+    addresses = [address for shown in interfaces.values() for address in shown]
+    if not addresses:
+        return {"ip_address": UNDEFINED, "ip_addresses": [], "interfaces": interfaces}
+    first = next(
+        (a for a in addresses if ipaddress.ip_address(a).version == 4), addresses[0]
+    )
+    return {"ip_address": first, "ip_addresses": addresses, "interfaces": interfaces}
 
 
 def parse_snapshots(entries: Any) -> dict[str, Any]:
@@ -1989,6 +2041,24 @@ class ProxmoxQEMUCoordinator(ProxmoxCoordinator):
             except UpdateFailed:
                 pass
 
+        # The agent answers only while it runs: a successful read says so, a
+        # refusal (403) says nothing, anything else - not running, VM off -
+        # says no. Not configured for the VM at all leaves it undefined.
+        agent_running: bool | UndefinedType = UNDEFINED
+        addresses = parse_guest_addresses(ProxmoxType.QEMU, None)
+        if api_status.get("agent"):
+            try:
+                interfaces = await self._poll_guest_agent(
+                    f"nodes/{node_name!s}/qemu/{self.resource_id}/agent/network-get-interfaces",
+                    "fsinfo",
+                )
+            except UpdateFailed:
+                agent_running = False
+            else:
+                if interfaces is not None:
+                    agent_running = True
+                    addresses = parse_guest_addresses(ProxmoxType.QEMU, interfaces)
+
         snapshots = await poll_snapshots(self, ProxmoxType.QEMU, node_name)
 
         update_device_via(self, ProxmoxType.QEMU, node_name)
@@ -2023,6 +2093,8 @@ class ProxmoxQEMUCoordinator(ProxmoxCoordinator):
                 api_status.get("cpu"), api_status.get("cpus"), node_cpus
             ),
             **snapshots,
+            agent_running=agent_running,
+            **addresses,
             memory_total=memory_total,
             memory_used=memory_used,
             memory_free=memory_free,
@@ -2118,6 +2190,24 @@ class ProxmoxLXCCoordinator(ProxmoxCoordinator):
             raise UpdateFailed(msg)
 
         snapshots = await poll_snapshots(self, ProxmoxType.LXC, node_name)
+        addresses = parse_guest_addresses(ProxmoxType.LXC, None)
+        if api_status.get("status") == "running":
+            try:
+                interfaces = await self.hass.async_add_executor_job(
+                    partial(
+                        poll_api,
+                        self.hass,
+                        self.config_entry,
+                        self.proxmox,
+                        f"nodes/{node_name!s}/lxc/{self.resource_id}/interfaces",
+                        ProxmoxType.LXC,
+                        self.resource_id,
+                        issue_crete_permissions=False,
+                    )
+                )
+            except UpdateFailed:
+                interfaces = None
+            addresses = parse_guest_addresses(ProxmoxType.LXC, interfaces)
 
         update_device_via(self, ProxmoxType.LXC, node_name)
 
@@ -2134,6 +2224,7 @@ class ProxmoxLXCCoordinator(ProxmoxCoordinator):
                 api_status.get("cpu"), api_status.get("cpus"), node_cpus
             ),
             **snapshots,
+            **addresses,
             memory_total=api_status.get("maxmem", UNDEFINED),
             memory_used=api_status.get("mem", UNDEFINED),
             memory_free=(

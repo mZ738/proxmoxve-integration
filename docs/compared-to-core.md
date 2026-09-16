@@ -59,6 +59,7 @@ Legend: ✅ available · ➖ not available · text where it differs.
 | Disk usage from the guest agent | ➖ | ✅ |
 | A file read from inside the guest | ➖ | ✅ |
 | Snapshot count with names | ➖ | ✅ |
+| Guest IP addresses, guest agent answering | ➖ | ✅ |
 | HA managed | ➖ | ✅ with optional cluster credentials |
 
 ## Storage

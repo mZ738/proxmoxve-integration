@@ -808,6 +808,16 @@ PROXMOX_SENSOR_NODES: Final[tuple[ProxmoxSensorEntityDescription, ...]] = (
     ),
 )
 
+PROXMOX_SENSOR_GUEST_ADDRESS: Final[tuple[ProxmoxSensorEntityDescription, ...]] = (
+    ProxmoxSensorEntityDescription(
+        key="ip_address",
+        name="IP address",
+        icon="mdi:ip-network",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        translation_key="ip_address",
+        extra_attrs=["ip_addresses", "interfaces"],
+    ),
+)
 PROXMOX_SENSOR_GUEST_SNAPSHOTS: Final[tuple[ProxmoxSensorEntityDescription, ...]] = (
     ProxmoxSensorEntityDescription(
         key="snapshots",
@@ -851,6 +861,7 @@ PROXMOX_SENSOR_QEMU: Final[tuple[ProxmoxSensorEntityDescription, ...]] = (
     ),
     *PROXMOX_SENSOR_GUEST_CPU,
     *PROXMOX_SENSOR_GUEST_SNAPSHOTS,
+    *PROXMOX_SENSOR_GUEST_ADDRESS,
     *PROXMOX_SENSOR_DISK,
     *PROXMOX_SENSOR_MEMORY,
     *PROXMOX_SENSOR_NETWORK,
@@ -875,6 +886,7 @@ PROXMOX_SENSOR_LXC: Final[tuple[ProxmoxSensorEntityDescription, ...]] = (
     ),
     *PROXMOX_SENSOR_GUEST_CPU,
     *PROXMOX_SENSOR_GUEST_SNAPSHOTS,
+    *PROXMOX_SENSOR_GUEST_ADDRESS,
     *PROXMOX_SENSOR_DISK,
     *PROXMOX_SENSOR_MEMORY,
     *PROXMOX_SENSOR_NETWORK,
