@@ -27,6 +27,7 @@ from custom_components.proxmoxve.const import (
     CONF_ENTITY_ID_SCHEME,
     CONF_NODES,
     CONF_REALM,
+    CONF_UPDATE_INTERVAL,
 )
 
 from .const import (
@@ -262,6 +263,8 @@ async def test_an_empty_selection_with_discovery_on_is_accepted(
     assert result["options"][CONF_AUTO_DISCOVERY] is True
     assert result["options"][CONF_ENTITY_ID_SCHEME] == "extended"
     assert result["options"][CONF_ENTITY_ID_PREFIX] == "pve"
+    # What the advanced options offer later starts at its default.
+    assert result["options"][CONF_UPDATE_INTERVAL] == 60
 
 
 async def test_an_empty_selection_without_discovery_asks_for_a_node(

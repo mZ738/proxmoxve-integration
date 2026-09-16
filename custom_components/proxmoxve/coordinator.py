@@ -38,6 +38,7 @@ from .api import ProxmoxClient, get_api
 from .const import (
     CONF_GUEST_FILE_PATH,
     CONF_NODE,
+    CONF_UPDATE_INTERVAL,
     DOMAIN,
     GUEST_AGENT_REFUSALS,
     GUEST_FILE_READ_MAX_BYTES,
@@ -47,6 +48,7 @@ from .const import (
     SLOW_UPDATE_INTERVAL,
     TASKS_UPDATE_INTERVAL,
     UPDATE_INTERVAL,
+    UPDATE_INTERVAL_CHOICES,
     ProxmoxType,
 )
 from .discovery import (
@@ -935,6 +937,24 @@ class CurrentApiMixin:
         self._proxmox = proxmox
 
 
+def poll_interval(config_entry: ConfigEntry) -> timedelta:
+    """
+    Return the interval of the coordinators that follow the cluster live.
+
+    Configurable in the options between 30 and 120 seconds, 60 unless
+    changed. The hourly reads (certificate, subscription, Ceph) and the
+    five-minute task scan keep their own pace.
+    """
+    seconds = config_entry.options.get(CONF_UPDATE_INTERVAL, UPDATE_INTERVAL)
+    try:
+        seconds = int(seconds)
+    except (TypeError, ValueError):
+        seconds = UPDATE_INTERVAL
+    if seconds not in UPDATE_INTERVAL_CHOICES:
+        seconds = UPDATE_INTERVAL
+    return timedelta(seconds=seconds)
+
+
 RESOURCES_CACHE = "resources_cache"
 # How long one `cluster/resources` read serves every coordinator of an
 # entry. They all poll on the same 60 s interval and were started within
@@ -1068,7 +1088,7 @@ class ProxmoxDiscoveryCoordinator(
             LOGGER,
             config_entry=config_entry,
             name="proxmox_coordinator_discovery",
-            update_interval=timedelta(seconds=UPDATE_INTERVAL),
+            update_interval=poll_interval(config_entry),
         )
 
         self.hass = hass
@@ -1133,7 +1153,7 @@ class ProxmoxHAResourcesCoordinator(DataUpdateCoordinator[set[str]]):
             LOGGER,
             config_entry=config_entry,
             name="proxmox_coordinator_ha_resources",
-            update_interval=timedelta(seconds=UPDATE_INTERVAL),
+            update_interval=poll_interval(config_entry),
         )
 
         self.hass = hass
@@ -1185,7 +1205,7 @@ class ProxmoxHAStatusCoordinator(ProxmoxCoordinator):
             LOGGER,
             config_entry=config_entry,
             name="proxmox_coordinator_ha_status",
-            update_interval=timedelta(seconds=UPDATE_INTERVAL),
+            update_interval=poll_interval(config_entry),
         )
 
         self.hass = hass
@@ -1237,7 +1257,7 @@ class ProxmoxClusterSummaryCoordinator(ProxmoxCoordinator):
             LOGGER,
             config_entry=config_entry,
             name="proxmox_coordinator_cluster_summary",
-            update_interval=timedelta(seconds=UPDATE_INTERVAL),
+            update_interval=poll_interval(config_entry),
         )
 
         self.hass = hass
@@ -1324,7 +1344,7 @@ class ProxmoxBackupCoordinator(ProxmoxCoordinator):
             LOGGER,
             config_entry=config_entry,
             name=f"proxmox_coordinator_backup_{node_name}",
-            update_interval=timedelta(seconds=UPDATE_INTERVAL),
+            update_interval=poll_interval(config_entry),
         )
 
         self.hass = hass
@@ -1383,7 +1403,7 @@ class ProxmoxReplicationCoordinator(ProxmoxCoordinator):
             LOGGER,
             config_entry=config_entry,
             name=f"proxmox_coordinator_replication_{node_name}",
-            update_interval=timedelta(seconds=UPDATE_INTERVAL),
+            update_interval=poll_interval(config_entry),
         )
 
         self.hass = hass
@@ -1481,7 +1501,7 @@ class ProxmoxCephCoordinator(ProxmoxCoordinator):
             LOGGER,
             config_entry=config_entry,
             name="proxmox_coordinator_ceph",
-            update_interval=timedelta(seconds=UPDATE_INTERVAL),
+            update_interval=poll_interval(config_entry),
         )
 
         self.hass = hass
@@ -1602,7 +1622,7 @@ class ProxmoxNodeCoordinator(ProxmoxCoordinator):
             LOGGER,
             config_entry=config_entry,
             name=f"proxmox_coordinator_{api_category}_{node_name}",
-            update_interval=timedelta(seconds=UPDATE_INTERVAL),
+            update_interval=poll_interval(config_entry),
         )
 
         self.hass = hass
@@ -1945,7 +1965,7 @@ class ProxmoxQEMUCoordinator(ProxmoxCoordinator):
             LOGGER,
             config_entry=config_entry,
             name=f"proxmox_coordinator_{api_category}_{qemu_id}",
-            update_interval=timedelta(seconds=UPDATE_INTERVAL),
+            update_interval=poll_interval(config_entry),
         )
 
         self.hass = hass
@@ -2197,7 +2217,7 @@ class ProxmoxLXCCoordinator(ProxmoxCoordinator):
             LOGGER,
             config_entry=config_entry,
             name=f"proxmox_coordinator_{api_category}_{container_id}",
-            update_interval=timedelta(seconds=UPDATE_INTERVAL),
+            update_interval=poll_interval(config_entry),
         )
 
         self.hass = hass
@@ -2327,7 +2347,7 @@ class ProxmoxStorageCoordinator(ProxmoxCoordinator):
             LOGGER,
             config_entry=config_entry,
             name=f"proxmox_coordinator_{api_category}_{storage_id}",
-            update_interval=timedelta(seconds=UPDATE_INTERVAL),
+            update_interval=poll_interval(config_entry),
         )
 
         self.hass = hass
@@ -2429,7 +2449,7 @@ class ProxmoxZFSCoordinator(ProxmoxCoordinator):
             LOGGER,
             config_entry=config_entry,
             name=f"proxmox_coordinator_{api_category}_{zfs_id}",
-            update_interval=timedelta(seconds=UPDATE_INTERVAL),
+            update_interval=poll_interval(config_entry),
         )
 
         self.hass = hass
@@ -2489,7 +2509,7 @@ class ProxmoxUpdateCoordinator(ProxmoxCoordinator):
             LOGGER,
             config_entry=config_entry,
             name=f"proxmox_coordinator_{api_category}_{node_name}",
-            update_interval=timedelta(seconds=UPDATE_INTERVAL),
+            update_interval=poll_interval(config_entry),
         )
 
         self.hass = hass
@@ -2680,7 +2700,7 @@ class ProxmoxDiskCoordinator(ProxmoxCoordinator):
             LOGGER,
             config_entry=config_entry,
             name=f"proxmox_coordinator_{api_category}_{node_name}_{disk_id}",
-            update_interval=timedelta(seconds=UPDATE_INTERVAL),
+            update_interval=poll_interval(config_entry),
         )
 
         self.hass = hass

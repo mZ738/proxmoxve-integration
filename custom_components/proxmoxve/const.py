@@ -52,6 +52,11 @@ DEFAULT_PORT = 8006
 DEFAULT_REALM = "pam"
 DEFAULT_VERIFY_SSL = True
 UPDATE_INTERVAL = 60
+# The choices the options offer for it. Proxmox's own pvestatd refreshes
+# guest figures about every ten seconds; anything below thirty would mostly
+# read the same numbers again.
+CONF_UPDATE_INTERVAL = "update_interval"
+UPDATE_INTERVAL_CHOICES = (30, 45, 60, 90, 120)
 # For everything that changes when a person changes it, rather than on its
 # own: a certificate is replaced, a backup job is edited, a subscription is
 # entered. Polling those at the usual interval would spend a request a minute

@@ -18,6 +18,10 @@ The integration now asks `cluster/status` at setup what address every node answe
 
 Two limits. The addresses in `cluster/status` are the ones the nodes joined the cluster on; if your cluster runs corosync on a separate network, Home Assistant cannot reach them and the fallback finds nothing — which leaves things exactly as they were before. And with **Verify SSL certificate** on, a fallback node has to present a certificate valid for that address, which per-node certificates usually are not.
 
+## How often it polls
+
+Nodes, guests, storage, backups, the cluster summary and discovery are read every **60 seconds** unless you pick another interval — 30, 45, 90 or 120 seconds — under *Advanced configuration*. Proxmox's own `pvestatd` refreshes guest figures about every ten seconds, so anything faster than 30 would mostly read the same numbers again. Certificates, subscriptions and Ceph are read hourly and the failed-task scan every five minutes, whatever the interval. The cluster's resource list, which every guest and storage coordinator needs, is read once per polling burst and shared — not once per entity. Any single coordinator can still be refreshed on demand with `homeassistant.update_entity` on one of its entities.
+
 ## Nodes that are switched off for a while
 
 With password authentication, a node that is off for longer than two hours used to demand new credentials when it came back: the login ticket had expired and its renewal was refused exactly like a wrong password. The integration now logs in again with the stored password before asking for anything, so a node that is off overnight simply resumes in the morning. A host that answers during boot but is not issuing tickets yet leaves setup retrying rather than asking for credentials. Tokens never had this problem; they do not expire.
