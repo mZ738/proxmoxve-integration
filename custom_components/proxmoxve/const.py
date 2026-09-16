@@ -15,6 +15,7 @@ CONF_VMS = "vms"
 CONF_CONTAINERS = "containers"
 CONF_DISKS_ENABLE = "disks_enable"
 CONF_TASKS_ENABLE = "tasks_enable"
+CONF_UPDATES_ENABLE = "updates_enable"
 # The storage the backup buttons write to. Unset means no buttons: vzdump
 # without a storage dumps into the node's local directory, which is never
 # what a button on a dashboard should do without being asked.

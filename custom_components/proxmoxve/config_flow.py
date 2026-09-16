@@ -45,6 +45,7 @@ from .const import (
     CONF_STORAGE,
     CONF_TASKS_ENABLE,
     CONF_TOKEN_NAME,
+    CONF_UPDATES_ENABLE,
     CONF_VMS,
     COORDINATORS,
     DEFAULT_ENTITY_ID_PREFIX,
@@ -419,6 +420,12 @@ class ProxmoxOptionsFlowHandler(config_entries.OptionsFlow):
                             ),
                         ): selector.BooleanSelector(),
                         vol.Optional(
+                            CONF_UPDATES_ENABLE,
+                            default=self.config_entry.options.get(
+                                CONF_UPDATES_ENABLE, True
+                            ),
+                        ): selector.BooleanSelector(),
+                        vol.Optional(
                             CONF_AUTO_DISCOVERY,
                             default=self.config_entry.options.get(
                                 CONF_AUTO_DISCOVERY, False
@@ -482,6 +489,7 @@ class ProxmoxOptionsFlowHandler(config_entries.OptionsFlow):
         options_data = {
             CONF_DISKS_ENABLE: user_input.get(CONF_DISKS_ENABLE),
             CONF_TASKS_ENABLE: user_input.get(CONF_TASKS_ENABLE),
+            CONF_UPDATES_ENABLE: user_input.get(CONF_UPDATES_ENABLE, True),
             CONF_AUTO_DISCOVERY: user_input.get(CONF_AUTO_DISCOVERY, False),
             CONF_GUEST_FILE_PATH: user_input.get(CONF_GUEST_FILE_PATH, "").strip(),
             CONF_BACKUP_STORAGE: (user_input.get(CONF_BACKUP_STORAGE) or "").strip(),
@@ -1118,6 +1126,10 @@ class ProxmoxVEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     default=True,
                 ): selector.BooleanSelector(),
                 vol.Optional(
+                    CONF_UPDATES_ENABLE,
+                    default=True,
+                ): selector.BooleanSelector(),
+                vol.Optional(
                     CONF_AUTO_DISCOVERY,
                     default=False,
                 ): selector.BooleanSelector(),
@@ -1212,6 +1224,7 @@ class ProxmoxVEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             options={
                 CONF_DISKS_ENABLE: user_input.get(CONF_DISKS_ENABLE),
                 CONF_TASKS_ENABLE: user_input.get(CONF_TASKS_ENABLE),
+                CONF_UPDATES_ENABLE: user_input.get(CONF_UPDATES_ENABLE, True),
                 CONF_AUTO_DISCOVERY: user_input.get(CONF_AUTO_DISCOVERY, False),
                 CONF_ENTITY_ID_SCHEME: user_input.get(
                     CONF_ENTITY_ID_SCHEME, SCHEME_STANDARD
