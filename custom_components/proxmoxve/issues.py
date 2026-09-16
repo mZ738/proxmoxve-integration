@@ -9,7 +9,8 @@ and a user without `VM.Audit` on `/vms` got one per VM, all saying the
 same. Now each kind is one repair per config entry that lists the
 resources concerned, rewritten as they come and go and removed when none
 is left. The lists live in `hass.data`, since the entry's runtime data
-does not exist yet while the coordinators take their first refresh.
+does not exist yet while the coordinators take their first refresh; the
+repairs are not persistent and go with the entry when it is unloaded.
 """
 
 from __future__ import annotations
@@ -61,7 +62,9 @@ def _rewrite(hass: HomeAssistant, config_entry: ConfigEntry, kind: str) -> None:
         DOMAIN,
         issue_id,
         is_fixable=False,
-        is_persistent=True,
+        # Not persistent: the lists behind them live in memory, and setup
+        # raises them again if they still apply after a restart.
+        is_persistent=False,
         severity=ir.IssueSeverity.ERROR,
         translation_key=f"resources_{kind}",
         translation_placeholders={
@@ -166,5 +169,13 @@ def sweep_legacy_issues(hass: HomeAssistant, config_entry: ConfigEntry) -> None:
 
 @callback
 def forget_entry(hass: HomeAssistant, entry_id: str) -> None:
-    """Drop the lists of an entry that is unloaded."""
+    """
+    Drop the lists and the repairs of an entry that is unloaded.
+
+    A reload raises them again where they still apply; a resource
+    deselected in the options - which is what the "not found" repair asks
+    for - is not looked at again and so stays off.
+    """
     hass.data.get(DOMAIN, {}).get(RESOURCE_ISSUES, {}).pop(entry_id, None)
+    for kind in (FORBIDDEN, NONEXISTENT):
+        ir.async_delete_issue(hass, DOMAIN, f"{entry_id}_{kind}")

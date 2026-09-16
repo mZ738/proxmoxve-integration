@@ -186,7 +186,7 @@ def note_guest_agent_refusal(
         DOMAIN,
         issue_id,
         is_fixable=False,
-        is_persistent=True,
+        is_persistent=False,
         severity=ir.IssueSeverity.WARNING,
         translation_key=f"guest_agent_{feature}_forbidden",
         translation_placeholders={

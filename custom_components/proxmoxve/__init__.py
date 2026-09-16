@@ -79,6 +79,7 @@ from .const import (
     ProxmoxType,
 )
 from .coordinator import (
+    GUEST_AGENT_PRIVILEGES,
     ProxmoxBackupCoordinator,
     ProxmoxBackupInfoCoordinator,
     ProxmoxCephCoordinator,
@@ -1322,6 +1323,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     hass.data.get(DOMAIN, {}).get(GUEST_AGENT_REFUSALS, {}).pop(entry.entry_id, None)
+    for feature in GUEST_AGENT_PRIVILEGES:
+        ir.async_delete_issue(hass, DOMAIN, f"{entry.entry_id}_guest_agent_{feature}")
     forget_entry(hass, entry.entry_id)
     return unload_ok
 
