@@ -30,7 +30,7 @@
             "disks_enable": "If you work with disk hibernation, you must disable this integration option so that it does not cause the disks to be reactivated unduly.",
             "tasks_enable": "Track and report failed tasks from the last 24 hours on selected nodes.",
             "auto_discovery": "Track every node, virtual machine, container and storage the credentials can see, and follow the cluster from then on: whatever is added is picked up, whatever is removed is dropped. The selection above is ignored while this is on. Templates are never tracked.",
-            "new_entity_ids": "Entity ids as `<prefix>_<kind>_<id>_<name>_<item>` - a common prefix first, the id before the name - instead of Home Assistant's `<device>_<item>`. Only entities created from now on get the new ids; ids that exist keep them. For a fresh install, turn this on here before anything is created.",
+            "new_entity_ids": "Entity ids as prefix_kind_id_name_item, for example `pve_qemu_108_win11_cpu_used` - a common prefix first, the id before the name - instead of Home Assistant's device_item, `qemu_win11_108_cpu_used`. Only entities created from now on get the new ids; ids that exist keep them. For a fresh install, turn this on here before anything is created.",
             "entity_id_prefix": "The first part of every entity id under the new scheme; `pve` unless you choose otherwise. Ignored while the switch is off."
           }
         },
@@ -187,7 +187,7 @@
             "guest_file_path": "Absolute path of a file inside each tracked QEMU guest to read via the guest agent and expose as a sensor. Leave empty to disable. Requires the QEMU guest agent to be running in the guest.",
             "auto_discovery": "Track every node, virtual machine, container and storage the credentials can see, and follow the cluster from then on: whatever is added is picked up, whatever is removed is dropped. The selection above is ignored while this is on. Templates are never tracked.",
             "backup_storage": "Where the \"Back up now\" and \"Back up all\" buttons write their backups (snapshot mode). The buttons exist only while a storage is picked here and the credentials hold VM.Backup. Storages that accept backups are listed; any other name can be typed in.",
-            "new_entity_ids": "Entity ids as `<prefix>_<kind>_<id>_<name>_<item>` - a common prefix first, the id before the name - instead of Home Assistant's `<device>_<item>`. Only entities created from now on get the new ids; ids that exist keep them. For a fresh install, turn this on here before anything is created.",
+            "new_entity_ids": "Entity ids as prefix_kind_id_name_item, for example `pve_qemu_108_win11_cpu_used` - a common prefix first, the id before the name - instead of Home Assistant's device_item, `qemu_win11_108_cpu_used`. Only entities created from now on get the new ids; ids that exist keep them. For a fresh install, turn this on here before anything is created.",
             "entity_id_prefix": "The first part of every entity id under the new scheme; `pve` unless you choose otherwise. Ignored while the switch is off."
           }
         }
