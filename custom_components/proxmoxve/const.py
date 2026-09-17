@@ -51,6 +51,9 @@ GUEST_AGENT_REFUSALS = "guest_agent_refusals"
 DEFAULT_PORT = 8006
 DEFAULT_REALM = "pam"
 DEFAULT_VERIFY_SSL = True
+# A CA bundle to trust on top of the public list and the operating system's
+# store, for a cluster with its own CA. Empty for "nothing extra".
+CONF_CA_BUNDLE = "ca_bundle"
 UPDATE_INTERVAL = 60
 # The choices the options offer for it. Proxmox's own pvestatd refreshes
 # guest figures about every ten seconds; anything below thirty would mostly

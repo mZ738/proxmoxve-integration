@@ -19,7 +19,11 @@ from homeassistant.const import (
     EVENT_HOMEASSISTANT_STOP,
     Platform,
 )
-from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.exceptions import (
+    ConfigEntryAuthFailed,
+    ConfigEntryError,
+    ConfigEntryNotReady,
+)
 from homeassistant.helpers import (
     device_registry as dr,
 )
@@ -35,6 +39,7 @@ from .api import (
     CONNECTION_ERRORS,
     REQUEST_ERRORS,
     SSL_ERRORS,
+    CABundleError,
     ProxmoxClient,
     auth_error_status,
     get_api,
@@ -42,6 +47,7 @@ from .api import (
 )
 from .const import (
     CONF_AUTO_DISCOVERY,
+    CONF_CA_BUNDLE,
     CONF_CONTAINERS,
     CONF_DISKS_ENABLE,
     CONF_HA_ADMIN_PASSWORD,
@@ -436,10 +442,11 @@ async def _async_rename_disk_devices(
         realm=entry_data[CONF_REALM],
         password=entry_data[CONF_PASSWORD],
         verify_ssl=entry_data[CONF_VERIFY_SSL],
+        ca_bundle=entry_data.get(CONF_CA_BUNDLE, ""),
     )
     try:
         await proxmox_client.build_client()
-    except REQUEST_ERRORS:
+    except (*REQUEST_ERRORS, CABundleError):
         LOGGER.warning("Disk device migration skipped: Proxmox is not reachable")
         return
     proxmox = proxmox_client.get_api_client()
@@ -943,6 +950,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
     realm = entry_data[CONF_REALM]
     password = entry_data[CONF_PASSWORD]
     verify_ssl = entry_data[CONF_VERIFY_SSL]
+    ca_bundle = entry_data.get(CONF_CA_BUNDLE, "")
 
     # Construct an API client with the given data for the given host
     proxmox_client = ProxmoxClient(
@@ -954,9 +962,14 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
         realm=realm,
         password=password,
         verify_ssl=verify_ssl,
+        ca_bundle=ca_bundle,
     )
     try:
         await proxmox_client.build_client()
+    except CABundleError as error:
+        # A path that cannot be read will not read itself next time; this
+        # is for the person who typed it, not for a retry.
+        raise ConfigEntryError(str(error)) from error
     except ProxmoxAuthError as error:
         # The login fails the same way for a refused password and for an
         # API that is up but not issuing tickets yet, as during boot. Only
@@ -1079,10 +1092,11 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
             realm=config_entry.data.get(CONF_HA_ADMIN_REALM, DEFAULT_REALM),
             password=ha_admin_password,
             verify_ssl=verify_ssl,
+            ca_bundle=ca_bundle,
         )
         try:
             await candidate_client.build_client()
-        except REQUEST_ERRORS:
+        except (*REQUEST_ERRORS, CABundleError):
             LOGGER.exception(
                 "Unable to authenticate with the optional cluster HA admin "
                 "credentials; the Arm/Disarm HA buttons, the HA managed "

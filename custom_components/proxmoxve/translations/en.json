@@ -10,7 +10,12 @@
             "port": "Port",
             "realm": "Realm",
             "username": "Username",
-            "verify_ssl": "Verify SSL certificate"
+            "verify_ssl": "Verify SSL certificate",
+            "ca_bundle": "CA bundle for a private CA"
+          },
+          "data_description": {
+            "verify_ssl": "Checks the node's certificate against the public CA list and the operating system's certificate store. A cluster's own CA is trusted once it is in that store (the Additional CA integration puts it there) or named below.",
+            "ca_bundle": "Path to a PEM file with the CA that signed the cluster's certificates, for example under /config. Added on top of the public list; nothing is taken away. Leave empty when verification is off or the CA is already in the system store."
           }
         },
         "expose": {
@@ -51,7 +56,12 @@
             "port": "Port",
             "realm": "Realm",
             "username": "Username",
-            "verify_ssl": "Verify SSL certificate"
+            "verify_ssl": "Verify SSL certificate",
+            "ca_bundle": "CA bundle for a private CA"
+          },
+          "data_description": {
+            "verify_ssl": "Checks the node's certificate against the public CA list and the operating system's certificate store. A cluster's own CA is trusted once it is in that store (the Additional CA integration puts it there) or named below.",
+            "ca_bundle": "Path to a PEM file with the CA that signed the cluster's certificates, for example under /config. Added on top of the public list; nothing is taken away. Leave empty when verification is off or the CA is already in the system store."
           }
         }
       },
@@ -61,7 +71,8 @@
         "general_error": "Unexpected error",
         "invalid_port": "Invalid port number",
         "nodes_required": "Pick at least one node, or turn on Track everything automatically.",
-        "ssl_rejection": "Could not verify the SSL certificate"
+        "ssl_rejection": "Could not verify the SSL certificate",
+        "ca_bundle_invalid": "The CA bundle could not be read; check the path and that the file is PEM"
       },
       "abort": {
         "already_configured": "Device is already configured",
@@ -148,7 +159,12 @@
               "token_name": "Token name",
               "realm": "Realm",
               "username": "Username",
-              "verify_ssl": "Verify SSL certificate"
+              "verify_ssl": "Verify SSL certificate",
+              "ca_bundle": "CA bundle for a private CA"
+          },
+          "data_description": {
+            "verify_ssl": "Checks the node's certificate against the public CA list and the operating system's certificate store. A cluster's own CA is trusted once it is in that store (the Additional CA integration puts it there) or named below.",
+            "ca_bundle": "Path to a PEM file with the CA that signed the cluster's certificates, for example under /config. Added on top of the public list; nothing is taken away. Leave empty when verification is off or the CA is already in the system store."
           },
           "description": "Proxmox host information"
         },
@@ -208,7 +224,8 @@
         "cant_connect": "Failed to connect",
         "general_error": "Unexpected error",
         "invalid_port": "Invalid port number",
-        "ssl_rejection": "Could not verify the SSL certificate"
+        "ssl_rejection": "Could not verify the SSL certificate",
+        "ca_bundle_invalid": "The CA bundle could not be read; check the path and that the file is PEM"
       },
       "abort": {
         "no_nodes": "No nodes were returned for the host.",

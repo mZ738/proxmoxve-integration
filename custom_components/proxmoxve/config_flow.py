@@ -23,10 +23,17 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers import selector
 
-from .api import CONNECTION_ERRORS, SSL_ERRORS, ProxmoxClient, get_api
+from .api import (
+    CONNECTION_ERRORS,
+    SSL_ERRORS,
+    CABundleError,
+    ProxmoxClient,
+    get_api,
+)
 from .const import (
     CONF_AUTO_DISCOVERY,
     CONF_BACKUP_STORAGE,
+    CONF_CA_BUNDLE,
     CONF_CONTAINERS,
     CONF_DISKS_ENABLE,
     CONF_ENTITY_ID_PREFIX,
@@ -79,6 +86,7 @@ SCHEMA_HOST_BASE: vol.Schema = vol.Schema(
 SCHEMA_HOST_SSL: vol.Schema = vol.Schema(
     {
         vol.Required(CONF_VERIFY_SSL, default=DEFAULT_VERIFY_SSL): bool,
+        vol.Optional(CONF_CA_BUNDLE, default=""): str,
     }
 )
 # The two realms every installation has, offered as a pick-list; anything
@@ -174,6 +182,7 @@ class ProxmoxOptionsFlowHandler(config_entries.OptionsFlow):
             realm: str = str(user_input.get(CONF_REALM))
             password: str = str(user_input.get(CONF_PASSWORD))
             verify_ssl = user_input.get(CONF_VERIFY_SSL)
+            ca_bundle = str(user_input.get(CONF_CA_BUNDLE, "")).strip()
 
             try:
                 self._proxmox_client = ProxmoxClient(
@@ -185,12 +194,15 @@ class ProxmoxOptionsFlowHandler(config_entries.OptionsFlow):
                     realm=realm,
                     password=password,
                     verify_ssl=verify_ssl,
+                    ca_bundle=ca_bundle,
                 )
 
                 await self._proxmox_client.build_client()
 
             except ProxmoxAuthError:
                 errors[CONF_USERNAME] = "auth_error"
+            except CABundleError:
+                errors[CONF_CA_BUNDLE] = "ca_bundle_invalid"
             except SSL_ERRORS:
                 errors[CONF_VERIFY_SSL] = "ssl_rejection"
             except CONNECTION_ERRORS:
@@ -209,6 +221,7 @@ class ProxmoxOptionsFlowHandler(config_entries.OptionsFlow):
                 config_data[CONF_PASSWORD] = user_input.get(CONF_PASSWORD)
                 config_data[CONF_REALM] = user_input.get(CONF_REALM)
                 config_data[CONF_VERIFY_SSL] = user_input.get(CONF_VERIFY_SSL)
+                config_data[CONF_CA_BUNDLE] = ca_bundle
 
                 self.hass.config_entries.async_update_entry(
                     self.config_entry,
@@ -251,6 +264,7 @@ class ProxmoxOptionsFlowHandler(config_entries.OptionsFlow):
             realm = str(user_input.get(CONF_HA_ADMIN_REALM, DEFAULT_REALM))
             password = str(user_input.get(CONF_HA_ADMIN_PASSWORD, "")).strip()
             verify_ssl = self.config_entry.data.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
+            ca_bundle = self.config_entry.data.get(CONF_CA_BUNDLE, "")
 
             if user and password:
                 try:
@@ -263,6 +277,7 @@ class ProxmoxOptionsFlowHandler(config_entries.OptionsFlow):
                         realm=realm,
                         password=password,
                         verify_ssl=verify_ssl,
+                        ca_bundle=ca_bundle,
                     )
 
                     await cluster_client.build_client()
@@ -340,6 +355,7 @@ class ProxmoxOptionsFlowHandler(config_entries.OptionsFlow):
             realm = self.config_entry.data[CONF_REALM]
             password = self.config_entry.data[CONF_PASSWORD]
             verify_ssl = self.config_entry.data[CONF_VERIFY_SSL]
+            ca_bundle = self.config_entry.data.get(CONF_CA_BUNDLE, "")
 
             try:
                 self._proxmox_client = ProxmoxClient(
@@ -351,6 +367,7 @@ class ProxmoxOptionsFlowHandler(config_entries.OptionsFlow):
                     realm=realm,
                     password=password,
                     verify_ssl=verify_ssl,
+                    ca_bundle=ca_bundle,
                 )
 
                 await self._proxmox_client.build_client()
@@ -567,6 +584,7 @@ class ProxmoxOptionsFlowHandler(config_entries.OptionsFlow):
                 realm=data[CONF_REALM],
                 password=data[CONF_PASSWORD],
                 verify_ssl=data[CONF_VERIFY_SSL],
+                ca_bundle=data.get(CONF_CA_BUNDLE, ""),
             )
             await self._proxmox_client.build_client()
         except ProxmoxAuthError:
@@ -946,6 +964,7 @@ class ProxmoxVEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             host: str = str(self._reauth_entry.data[CONF_HOST])
             port: int = int(str(self._reauth_entry.data[CONF_PORT]))
             verify_ssl: bool = bool(self._reauth_entry.data[CONF_VERIFY_SSL])
+            ca_bundle = self._reauth_entry.data.get(CONF_CA_BUNDLE, "")
             user: str = str(user_input.get(CONF_USERNAME))
             token_name: str = str(user_input.get(CONF_TOKEN_NAME))
             realm: str = str(user_input.get(CONF_REALM))
@@ -961,6 +980,7 @@ class ProxmoxVEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     realm=realm,
                     password=password,
                     verify_ssl=verify_ssl,
+                    ca_bundle=ca_bundle,
                 )
 
                 await self._proxmox_client.build_client()
@@ -1019,6 +1039,7 @@ class ProxmoxVEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             realm: str = str(user_input.get(CONF_REALM))
             password: str = str(user_input.get(CONF_PASSWORD))
             verify_ssl = user_input.get(CONF_VERIFY_SSL)
+            ca_bundle = str(user_input.get(CONF_CA_BUNDLE, "")).strip()
 
             try:
                 self._proxmox_client = ProxmoxClient(
@@ -1030,12 +1051,15 @@ class ProxmoxVEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     realm=realm,
                     password=password,
                     verify_ssl=verify_ssl,
+                    ca_bundle=ca_bundle,
                 )
 
                 await self._proxmox_client.build_client()
 
             except ProxmoxAuthError:
                 errors[CONF_USERNAME] = "auth_error"
+            except CABundleError:
+                errors[CONF_CA_BUNDLE] = "ca_bundle_invalid"
             except SSL_ERRORS:
                 errors[CONF_VERIFY_SSL] = "ssl_rejection"
             except CONNECTION_ERRORS:
@@ -1056,6 +1080,7 @@ class ProxmoxVEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 config_data[CONF_PASSWORD] = user_input.get(CONF_PASSWORD)
                 config_data[CONF_REALM] = user_input.get(CONF_REALM)
                 config_data[CONF_VERIFY_SSL] = user_input.get(CONF_VERIFY_SSL)
+                config_data[CONF_CA_BUNDLE] = ca_bundle
 
                 self.hass.config_entries.async_update_entry(
                     self._reconfig_entry,
@@ -1106,6 +1131,7 @@ class ProxmoxVEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             password = user_input.get(CONF_PASSWORD, "")
             realm = user_input.get(CONF_REALM, DEFAULT_REALM)
             verify_ssl = user_input.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
+            ca_bundle = str(user_input.get(CONF_CA_BUNDLE, "")).strip()
 
             self._host = host
 
@@ -1123,12 +1149,15 @@ class ProxmoxVEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         realm=realm,
                         password=password,
                         verify_ssl=verify_ssl,
+                        ca_bundle=ca_bundle,
                     )
 
                     await self._proxmox_client.build_client()
 
                 except ProxmoxAuthError:
                     errors[CONF_USERNAME] = "auth_error"
+                except CABundleError:
+                    errors[CONF_CA_BUNDLE] = "ca_bundle_invalid"
                 except SSL_ERRORS:
                     errors[CONF_VERIFY_SSL] = "ssl_rejection"
                 except CONNECTION_ERRORS:
@@ -1144,6 +1173,7 @@ class ProxmoxVEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     self._config[CONF_PASSWORD] = password
                     self._config[CONF_REALM] = realm
                     self._config[CONF_VERIFY_SSL] = verify_ssl
+                    self._config[CONF_CA_BUNDLE] = ca_bundle
 
                     return await self.async_step_expose()
 

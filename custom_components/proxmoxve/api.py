@@ -3,7 +3,9 @@
 """Handle API for Proxmox VE."""
 
 import re
+import ssl
 from collections.abc import Iterable
+from contextlib import suppress
 from typing import Any
 
 import aiohttp
@@ -15,6 +17,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.util.ssl import create_client_context
 
 from .const import (
     CONF_BACKUP_STORAGE,
@@ -49,6 +52,34 @@ REQUEST_ERRORS: tuple[type[BaseException], ...] = (
     ProxmoxAuthError,
     ProxmoxAPIError,
 )
+
+
+class CABundleError(Exception):
+    """The CA bundle named in the configuration could not be loaded."""
+
+
+def build_verifying_context(ca_bundle: str = "") -> ssl.SSLContext:
+    """
+    Return the SSL context a verifying client checks certificates against.
+
+    Home Assistant's own client context trusts the public list (certifi).
+    A Proxmox cluster signs its nodes' certificates with its own CA, so
+    that alone refuses every cluster that has verification on - even one
+    whose CA is installed in the operating system's store, which the
+    Additional CA integration fills. That store is added here, and on top
+    of it the bundle named in the configuration, if any. Nothing is taken
+    away from the public list. Reads files, so it belongs in the executor.
+    """
+    context = create_client_context()
+    with suppress(ssl.SSLError, OSError):
+        context.load_default_certs()
+    if ca_bundle:
+        try:
+            context.load_verify_locations(cafile=ca_bundle)
+        except (OSError, ssl.SSLError) as error:
+            msg = f"CA bundle {ca_bundle} could not be loaded: {error}"
+            raise CABundleError(msg) from error
+    return context
 
 
 def auth_error_status(error: BaseException) -> int | None:
@@ -118,6 +149,7 @@ class ProxmoxClient:
         port: int | None = DEFAULT_PORT,
         realm: str | None = DEFAULT_REALM,
         verify_ssl: bool | None = DEFAULT_VERIFY_SSL,
+        ca_bundle: str | None = "",
     ) -> None:
         """Initialize the ProxmoxClient."""
         self._hass = hass
@@ -128,6 +160,7 @@ class ProxmoxClient:
         self._realm = realm
         self._password = password
         self._verify_ssl = verify_ssl
+        self._ca_bundle = (ca_bundle or "").strip()
 
     @property
     def host(self) -> str:
@@ -158,11 +191,16 @@ class ProxmoxClient:
         credential may make - `version` - stands in for the login, and a
         refused token is reported here rather than by whatever is read
         first. Raises ProxmoxAuthError for refused credentials, the aiohttp
-        errors for a host that is not there, and ProxmoxAPIError for
-        anything else the API answered.
+        errors for a host that is not there, ProxmoxAPIError for anything
+        else the API answered, and CABundleError for a bundle path that
+        cannot be read.
         """
-        verify_ssl = bool(self._verify_ssl)
-        session = async_get_clientsession(self._hass, verify_ssl=verify_ssl)
+        verify_ssl: bool | ssl.SSLContext = bool(self._verify_ssl)
+        session = async_get_clientsession(self._hass, verify_ssl=bool(verify_ssl))
+        if verify_ssl:
+            verify_ssl = await self._hass.async_add_executor_job(
+                build_verifying_context, self._ca_bundle
+            )
         user_id = self._user_id()
 
         if token_name := token_name_only(self._token_name):

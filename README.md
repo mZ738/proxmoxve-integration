@@ -65,6 +65,8 @@ In your Home Assistant configuration, enter the token's **name** — the part af
 
 You can check this in Proxmox under Datacenter > Permissions > Users > Realm column
 
+**Verify SSL certificate** checks the node's certificate against the public CA list and the operating system's certificate store. A cluster signs its nodes' certificates with its own CA, so either install that CA in the system store (the [Additional CA](https://github.com/Athozs/hass-additional-ca) integration does that on Home Assistant OS) or name the CA file in **CA bundle for a private CA** — a path to a PEM file, for example under `/config`. It is added on top of the public list; nothing is taken away. With verification off the field is ignored.
+
 If the button doesn't work, add it by hand: Settings → Devices & Services → Add integration → search for `Proxmox VE` and follow the on-screen instructions.
 
 ### Options

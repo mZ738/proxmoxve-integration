@@ -21,6 +21,16 @@ logger:
 ```
 </details>
 
+## "Could not verify the SSL certificate"
+
+Proxmox signs every node's certificate with the cluster's own CA, which no public list knows. Three ways out, from safest to least safe:
+
+1. Install the cluster's CA — `/etc/pve/pve-root-ca.pem` on any node — in Home Assistant's operating system store. On Home Assistant OS the [Additional CA](https://github.com/Athozs/hass-additional-ca) integration does this; the integration trusts that store alongside the public list.
+2. Put the same file somewhere Home Assistant can read it, for example `/config/pve-root-ca.pem`, and enter that path as **CA bundle for a private CA** on the host form (also in the options under *Change host authentication information*). The file is read when the integration starts; a path that cannot be read stops setup with a message rather than retrying.
+3. Turn **Verify SSL certificate** off. The connection is still encrypted, but the node's identity is not checked.
+
+With a fallback to another cluster node (see [Behaviour](behaviour.md)), that node's certificate has to be valid for the address it is reached on as well.
+
 ## Diagnostics
 
 The integration supports Home Assistant's standard diagnostics download (Settings > Devices & services > Proxmox VE > ⋮ > Download diagnostics), useful for attaching to bug reports. It includes the config entry's settings (credentials redacted) and a snapshot of the last data polled by every active coordinator (nodes, VMs/CTs, storage, disks, ZFS, tasks, updates, and — if configured — the HA-managed resource list and cluster HA status). Node, VM/CT, and storage names are not redacted since they're the point of a diagnostics dump; review the file before sharing it publicly if that's a concern for your setup.
