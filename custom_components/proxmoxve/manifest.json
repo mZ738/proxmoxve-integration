@@ -13,7 +13,7 @@
     "aioproxmox"
   ],
   "requirements": [
-    "aioproxmox @ git+https://github.com/mZ738/aioproxmox.git@ed920abb3c04794590256eabcb4407344850d5f4"
+    "aioproxmox@git+https://github.com/mZ738/aioproxmox.git@ed920abb3c04794590256eabcb4407344850d5f4"
   ],
   "version": "5.0.0"
 }

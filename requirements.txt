@@ -1,5 +1,5 @@
 colorlog==6.12.0
 homeassistant==2026.9.1
 pip>=26.1.2
-aioproxmox @ git+https://github.com/mZ738/aioproxmox.git@ed920abb3c04794590256eabcb4407344850d5f4
+aioproxmox@git+https://github.com/mZ738/aioproxmox.git@ed920abb3c04794590256eabcb4407344850d5f4
 ruff==0.16.6
