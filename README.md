@@ -72,7 +72,7 @@ If the button doesn't work, add it by hand: Settings → Devices & Services → 
 Everything beyond the credentials lives in the integration options (Settings → Devices & services → Proxmox VE → Configure), split into the selection and an **Advanced configuration** page:
 
 - **Add or remove nodes, VMs, containers or storages** — what is tracked. Shared storage is listed once, marked *(shared)*.
-- **Enable physical disk information** — the per-disk devices with SMART, temperature and wearout. Reading SMART wakes sleeping disks, which is why it can be switched off.
+- **Monitor physical disks** — the per-disk devices with SMART, temperature and wearout. Reading SMART wakes sleeping disks, which is why it can be switched off.
 - **Polling interval** — 30, 45, 60, 90 or 120 seconds for nodes, guests, storage and backups; certificates, subscriptions and Ceph stay hourly, failed tasks at five minutes.
 - **Monitor package updates** — the [update entity](https://github.com/dougiteixeira/proxmoxve/blob/main/docs/entities.md#package-updates); off means no `Sys.Modify` needed.
 - **Monitor failed tasks** — the [failed task sensors](https://github.com/dougiteixeira/proxmoxve/blob/main/docs/entities.md#failed-task-monitoring).

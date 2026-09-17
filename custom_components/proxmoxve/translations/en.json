@@ -20,13 +20,13 @@
             "qemu": "Virtual Machines (QEMU)",
             "lxc": "Linux Containers (LXC)",
             "storage": "Storages",
-            "disks_enable": "Enable physical disk information",
+            "disks_enable": "Monitor physical disks",
             "auto_discovery": "Track everything automatically",
             "entity_id_scheme": "Entity id scheme",
             "entity_id_prefix": "Prefix for the extended scheme"
           },
           "data_description": {
-            "disks_enable": "If you work with disk hibernation, you must disable this integration option so that it does not cause the disks to be reactivated unduly.",
+            "disks_enable": "Read the model, size, temperature, wearout and SMART health of each node's physical disks as a device of its own. If you spin disks down, switch this off - the SMART read wakes them on every poll otherwise.",
             "auto_discovery": "Track every node, virtual machine, container and storage the credentials can see, and follow the cluster from then on: whatever is added is picked up, whatever is removed is dropped. The selection above is ignored while this is on. Templates are never tracked.",
             "entity_id_scheme": "Standard: Home Assistant's device then name, `qemu_win11_108_cpu_used`. Extended: prefix, kind, id, name, item - `pve_qemu_108_win11_cpu_used` - so a search or a recorder filter catches everything by the prefix and a list sorts by id. Applies to entities created from now on; ids that exist keep them.",
             "entity_id_prefix": "The first part of every entity id under the extended scheme; `pve` unless you choose otherwise. Not used by the standard scheme."
@@ -182,7 +182,7 @@
           "title": "Advanced configuration",
           "description": "What is read besides the basics, how often, and how entities are named. Every field has a default a setup runs fine on.",
           "data": {
-            "disks_enable": "Enable physical disk information",
+            "disks_enable": "Monitor physical disks",
             "tasks_enable": "Monitor failed tasks",
             "updates_enable": "Monitor package updates",
             "update_interval": "Polling interval",
@@ -192,8 +192,8 @@
             "entity_id_prefix": "Prefix for the extended scheme"
           },
           "data_description": {
-            "disks_enable": "If you work with disk hibernation, you must disable this integration option so that it does not cause the disks to be reactivated unduly.",
-            "tasks_enable": "Track and report failed tasks from the last 24 hours on selected nodes.",
+            "disks_enable": "Read the model, size, temperature, wearout and SMART health of each node's physical disks as a device of its own. If you spin disks down, switch this off - the SMART read wakes them on every poll otherwise.",
+            "tasks_enable": "Track and report failed tasks from the last 24 hours on the selected nodes, as a sensor. Read every five minutes.",
             "updates_enable": "Read the pending package upgrades of each node into an update entity and a count sensor. Needs Sys.Modify on the node; switch this off to run without that privilege - or without the entities.",
             "update_interval": "How often nodes, guests, storage and backups are read. 60 seconds unless changed; Proxmox itself refreshes guest figures about every 10 seconds. Certificates, subscriptions and Ceph are read hourly, failed tasks every five minutes, whatever is set here.",
             "guest_file_path": "Absolute path of a file inside each tracked QEMU guest to read via the guest agent and expose as a sensor. Leave empty to disable. Requires the QEMU guest agent to be running in the guest.",
