@@ -19,23 +19,12 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
-from proxmoxer import AuthenticationError
-from proxmoxer.core import ResourceException
-from requests.exceptions import (
-    ConnectionError as connError,
-)
-from requests.exceptions import (
-    ConnectTimeout,
-    RetryError,
-    SSLError,
-)
-
-from .api import get_api
+from .api import REQUEST_ERRORS, get_api
 from .const import LOGGER
 
 if TYPE_CHECKING:
+    from aioproxmox import ProxmoxVE
     from homeassistant.core import HomeAssistant
-    from proxmoxer import ProxmoxAPI
 
 type Permissions = dict[str, dict[str, int]]
 
@@ -53,7 +42,7 @@ class ProxmoxPrivilege(StrEnum):
 
 
 async def async_fetch_permissions(
-    hass: HomeAssistant, proxmox: ProxmoxAPI
+    hass: HomeAssistant, proxmox: ProxmoxVE
 ) -> Permissions | None:
     """
     Read the effective privileges of the credentials behind `proxmox`.
@@ -63,17 +52,8 @@ async def async_fetch_permissions(
     repair issue on a failed command still covers that case.
     """
     try:
-        result = await hass.async_add_executor_job(
-            get_api, proxmox, "access/permissions"
-        )
-    except (
-        AuthenticationError,
-        SSLError,
-        ConnectTimeout,
-        RetryError,
-        connError,
-        ResourceException,
-    ) as error:
+        result = await get_api(proxmox, "access/permissions")
+    except REQUEST_ERRORS as error:
         LOGGER.debug("Could not read the credentials' permissions: %s", error)
         return None
 

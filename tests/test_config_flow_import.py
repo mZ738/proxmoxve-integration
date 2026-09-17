@@ -4,7 +4,7 @@
 
 from unittest.mock import patch
 
-import proxmoxer
+from aioproxmox.exceptions import ProxmoxAuthError
 from homeassistant.config_entries import (
     SOURCE_IMPORT,
 )
@@ -16,7 +16,6 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import issue_registry as ir
 from pytest_homeassistant_custom_component.common import MockConfigEntry
-from requests.exceptions import ConnectTimeout, SSLError
 
 from custom_components.proxmoxve import DOMAIN
 from custom_components.proxmoxve.const import (
@@ -30,15 +29,16 @@ from .const import (
     YAML_INPUT_NOT_EXIST,
     YAML_INPUT_OK,
 )
+from .fake_api import ssl_rejection
 
 
 async def test_flow_import_ok(hass: HomeAssistant) -> None:
     """Test import flow ok."""
     conf = YAML_INPUT_OK[DOMAIN]
     with (
-        patch("proxmoxer.ProxmoxResource.get", return_value=MOCK_GET_RESPONSE),
+        patch("aioproxmox.ProxmoxVE.request", return_value=MOCK_GET_RESPONSE),
         patch(
-            "proxmoxer.backends.https.ProxmoxHTTPAuth._get_new_tokens",
+            "aioproxmox.ProxmoxHTTPAuth._get_new_tokens",
             return_value=None,
         ),
     ):
@@ -67,9 +67,9 @@ async def test_flow_import_error_node_not_exist(hass: HomeAssistant) -> None:
     """Test import error in case node not exist in Proxmox."""
     conf = YAML_INPUT_NOT_EXIST[DOMAIN]
     with (
-        patch("proxmoxer.ProxmoxResource.get", return_value=MOCK_GET_RESPONSE),
+        patch("aioproxmox.ProxmoxVE.request", return_value=MOCK_GET_RESPONSE),
         patch(
-            "proxmoxer.backends.https.ProxmoxHTTPAuth._get_new_tokens",
+            "aioproxmox.ProxmoxHTTPAuth._get_new_tokens",
             return_value=None,
         ),
     ):
@@ -97,7 +97,7 @@ async def test_flow_import_error_auth_error(hass: HomeAssistant) -> None:
     conf = YAML_INPUT_OK[DOMAIN]
     with patch(
         "custom_components.proxmoxve.ProxmoxClient.build_client",
-        side_effect=proxmoxer.backends.https.AuthenticationError("mock msg"),
+        side_effect=ProxmoxAuthError("mock msg"),
         return_value=None,
     ):
         # imported config is identical to the one generated from config flow
@@ -123,7 +123,7 @@ async def test_flow_import_error_ssl_rejection(hass: HomeAssistant) -> None:
     conf = YAML_INPUT_OK[DOMAIN]
     with patch(
         "custom_components.proxmoxve.ProxmoxClient.build_client",
-        side_effect=SSLError,
+        side_effect=ssl_rejection(),
         return_value=None,
     ):
         # imported config is identical to the one generated from config flow
@@ -149,7 +149,7 @@ async def test_flow_import_error_cant_connect(hass: HomeAssistant) -> None:
     conf = YAML_INPUT_OK[DOMAIN]
     with patch(
         "custom_components.proxmoxve.ProxmoxClient.build_client",
-        side_effect=ConnectTimeout,
+        side_effect=TimeoutError,
         return_value=None,
     ):
         # imported config is identical to the one generated from config flow
@@ -207,9 +207,9 @@ async def test_flow_import_error_already_configured(hass: HomeAssistant) -> None
     entry.add_to_hass(hass)
 
     with (
-        patch("proxmoxer.ProxmoxResource.get", return_value=MOCK_GET_RESPONSE),
+        patch("aioproxmox.ProxmoxVE.request", return_value=MOCK_GET_RESPONSE),
         patch(
-            "proxmoxer.backends.https.ProxmoxHTTPAuth._get_new_tokens",
+            "aioproxmox.ProxmoxHTTPAuth._get_new_tokens",
             return_value=None,
         ),
     ):

@@ -4,7 +4,7 @@
 
 from unittest.mock import patch
 
-import proxmoxer
+from aioproxmox.exceptions import ProxmoxAuthError
 from homeassistant.config_entries import (
     SOURCE_USER,
 )
@@ -17,7 +17,6 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
-from requests.exceptions import ConnectTimeout, SSLError
 
 from custom_components.proxmoxve import DOMAIN
 from custom_components.proxmoxve.const import (
@@ -38,6 +37,7 @@ from .const import (
     USER_INPUT_SELECTION,
     USER_INPUT_USER_HOST,
 )
+from .fake_api import ssl_rejection
 
 
 async def test_flow_ok(hass: HomeAssistant) -> None:
@@ -50,9 +50,9 @@ async def test_flow_ok(hass: HomeAssistant) -> None:
     assert result["step_id"] == "host"
 
     with (
-        patch("proxmoxer.ProxmoxResource.get", return_value=MOCK_GET_RESPONSE),
+        patch("aioproxmox.ProxmoxVE.request", return_value=MOCK_GET_RESPONSE),
         patch(
-            "proxmoxer.backends.https.ProxmoxHTTPAuth._get_new_tokens",
+            "aioproxmox.ProxmoxHTTPAuth._get_new_tokens",
             return_value=None,
         ),
     ):
@@ -89,9 +89,9 @@ async def test_flow_accepts_a_realm_outside_the_pick_list(
     )
 
     with (
-        patch("proxmoxer.ProxmoxResource.get", return_value=MOCK_GET_RESPONSE),
+        patch("aioproxmox.ProxmoxVE.request", return_value=MOCK_GET_RESPONSE),
         patch(
-            "proxmoxer.backends.https.ProxmoxHTTPAuth._get_new_tokens",
+            "aioproxmox.ProxmoxHTTPAuth._get_new_tokens",
             return_value=None,
         ),
     ):
@@ -112,9 +112,7 @@ async def test_flow_accepts_a_realm_outside_the_pick_list(
 
 async def test_flow_port_small(hass: HomeAssistant) -> None:
     """Test if port number too small."""
-    with patch(
-        "proxmoxer.backends.https.ProxmoxHTTPAuth._get_new_tokens", return_value=None
-    ):
+    with patch("aioproxmox.ProxmoxHTTPAuth._get_new_tokens", return_value=None):
         result = await hass.config_entries.flow.async_init(
             DOMAIN,
             context={"source": SOURCE_USER},
@@ -127,9 +125,7 @@ async def test_flow_port_small(hass: HomeAssistant) -> None:
 
 async def test_flow_port_big(hass: HomeAssistant) -> None:
     """Test if port number too big."""
-    with patch(
-        "proxmoxer.backends.https.ProxmoxHTTPAuth._get_new_tokens", return_value=None
-    ):
+    with patch("aioproxmox.ProxmoxHTTPAuth._get_new_tokens", return_value=None):
         result = await hass.config_entries.flow.async_init(
             DOMAIN,
             context={"source": SOURCE_USER},
@@ -144,7 +140,7 @@ async def test_flow_auth_error(hass: HomeAssistant) -> None:
     """Test errors in case username or password are incorrect."""
     with patch(
         "custom_components.proxmoxve.ProxmoxClient.build_client",
-        side_effect=proxmoxer.backends.https.AuthenticationError("mock msg"),
+        side_effect=ProxmoxAuthError("mock msg"),
         return_value=None,
     ):
         result = await hass.config_entries.flow.async_init(
@@ -159,7 +155,7 @@ async def test_flow_cant_connect(hass: HomeAssistant) -> None:
     """Test errors in case the connection fails."""
     with patch(
         "custom_components.proxmoxve.ProxmoxClient.build_client",
-        side_effect=ConnectTimeout,
+        side_effect=TimeoutError,
         return_value=None,
     ):
         result = await hass.config_entries.flow.async_init(
@@ -174,7 +170,7 @@ async def test_flow_ssl_error(hass: HomeAssistant) -> None:
     """Test errors in case the SSL certificare is not present or is not valid or is expired."""
     with patch(
         "custom_components.proxmoxve.ProxmoxClient.build_client",
-        side_effect=SSLError,
+        side_effect=ssl_rejection(),
         return_value=None,
     ):
         result = await hass.config_entries.flow.async_init(
@@ -212,9 +208,9 @@ async def test_flow_already_configured(hass: HomeAssistant) -> None:
     entry.add_to_hass(hass)
 
     with (
-        patch("proxmoxer.ProxmoxResource.get", return_value=MOCK_GET_RESPONSE),
+        patch("aioproxmox.ProxmoxVE.request", return_value=MOCK_GET_RESPONSE),
         patch(
-            "proxmoxer.backends.https.ProxmoxHTTPAuth._get_new_tokens",
+            "aioproxmox.ProxmoxHTTPAuth._get_new_tokens",
             return_value=None,
         ),
     ):
@@ -242,9 +238,9 @@ async def test_an_empty_selection_with_discovery_on_is_accepted(
     )
 
     with (
-        patch("proxmoxer.ProxmoxResource.get", return_value=MOCK_GET_RESPONSE),
+        patch("aioproxmox.ProxmoxVE.request", return_value=MOCK_GET_RESPONSE),
         patch(
-            "proxmoxer.backends.https.ProxmoxHTTPAuth._get_new_tokens",
+            "aioproxmox.ProxmoxHTTPAuth._get_new_tokens",
             return_value=None,
         ),
     ):
@@ -276,9 +272,9 @@ async def test_an_empty_selection_without_discovery_asks_for_a_node(
     )
 
     with (
-        patch("proxmoxer.ProxmoxResource.get", return_value=MOCK_GET_RESPONSE),
+        patch("aioproxmox.ProxmoxVE.request", return_value=MOCK_GET_RESPONSE),
         patch(
-            "proxmoxer.backends.https.ProxmoxHTTPAuth._get_new_tokens",
+            "aioproxmox.ProxmoxHTTPAuth._get_new_tokens",
             return_value=None,
         ),
     ):

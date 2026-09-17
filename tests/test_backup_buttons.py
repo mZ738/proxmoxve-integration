@@ -2,9 +2,8 @@
 # SPDX-License-Identifier: MIT
 """Tests for the backup buttons and the storage option behind them."""
 
-from functools import partial
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from homeassistant.core import HomeAssistant
@@ -146,6 +145,9 @@ async def test_a_press_posts_one_vzdump_run_to_the_picked_storage(
 ) -> None:
     """Test the button runs vzdump in snapshot mode against the option's storage."""
     proxmox = MagicMock()
+    proxmox.request = AsyncMock(
+        return_value="UPID:pve:0001:0001:1:vzdump:100:root@pam:"
+    )
     proxmox_client = MagicMock()
     proxmox_client.get_api_client.return_value = proxmox
     entry = MockConfigEntry(
@@ -153,19 +155,17 @@ async def test_a_press_posts_one_vzdump_run_to_the_picked_storage(
     )
     entity = SimpleNamespace(hass=hass, config_entry=entry)
 
-    await hass.async_add_executor_job(
-        partial(
-            post_api_command,
-            entity,
-            proxmox_client=proxmox_client,
-            api_category=api_category,
-            command=command,
-            node="pve",
-            vm_id=vm_id,
-        )
+    await post_api_command(
+        entity,
+        proxmox_client=proxmox_client,
+        api_category=api_category,
+        command=command,
+        node="pve",
+        vm_id=vm_id,
     )
 
-    proxmox.post.assert_called_once()
-    path, kwargs = proxmox.post.call_args.args[0], proxmox.post.call_args.kwargs
-    assert path == "nodes/pve/vzdump"
-    assert kwargs == {"mode": "snapshot", "storage": "nas", **target}
+    proxmox.request.assert_awaited_once_with(
+        "POST",
+        "nodes/pve/vzdump",
+        json_data={"mode": "snapshot", "storage": "nas", **target},
+    )

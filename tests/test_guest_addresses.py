@@ -11,14 +11,13 @@ Upstream #140 asked for both. A VM reports through the agent
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.typing import UNDEFINED
-from proxmoxer.core import ResourceException
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.proxmoxve import DOMAIN
 from custom_components.proxmoxve.const import COORDINATORS, ProxmoxType
 from custom_components.proxmoxve.coordinator import parse_guest_addresses
 
-from .fake_api import NODE, FakeProxmox, qemu_status
+from .fake_api import NODE, FakeProxmox, api_error, qemu_status
 from .test_setup_full import _setup, _state
 
 
@@ -104,10 +103,8 @@ async def test_the_guest_agent_sensor_says_whether_the_agent_answers(
         == "on"
     )
 
-    fake_api.routes[f"nodes/{NODE}/qemu/101/agent/network-get-interfaces"] = (
-        ResourceException(
-            500, "Internal Server Error", "QEMU guest agent is not running"
-        )
+    fake_api.routes[f"nodes/{NODE}/qemu/101/agent/network-get-interfaces"] = api_error(
+        500, "Internal Server Error", "QEMU guest agent is not running"
     )
     coordinator = current_entry.runtime_data[COORDINATORS]["qemu_101"]
     await coordinator.async_refresh()
@@ -149,7 +146,7 @@ async def test_a_refused_agent_read_leaves_the_agent_state_unknown(
     hass: HomeAssistant, fake_api: FakeProxmox, current_entry: MockConfigEntry
 ) -> None:
     """Test a 403 says nothing about the agent - the repair says what is missing."""
-    forbidden = ResourceException(403, "Forbidden", "Permission check failed")
+    forbidden = api_error(403, "Forbidden", "Permission check failed")
     fake_api.routes[f"nodes/{NODE}/qemu/101/agent/network-get-interfaces"] = forbidden
     fake_api.routes[f"nodes/{NODE}/qemu/101/agent/get-fsinfo"] = forbidden
     await _setup(hass, current_entry)

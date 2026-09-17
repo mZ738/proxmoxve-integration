@@ -11,14 +11,13 @@ list always ends with a `current` pseudo entry that is no snapshot.
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.typing import UNDEFINED
-from proxmoxer.core import ResourceException
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.proxmoxve import DOMAIN
 from custom_components.proxmoxve.const import COORDINATORS
 from custom_components.proxmoxve.coordinator import parse_snapshots
 
-from .fake_api import NODE, FakeProxmox
+from .fake_api import NODE, FakeProxmox, api_error
 from .test_setup_full import _setup
 
 
@@ -82,7 +81,7 @@ async def test_a_refused_snapshot_list_creates_no_sensor_and_no_repair(
     hass: HomeAssistant, fake_api: FakeProxmox, current_entry: MockConfigEntry
 ) -> None:
     """Test a guest whose snapshot list cannot be read still sets up as before."""
-    fake_api.routes[f"nodes/{NODE}/qemu/101/snapshot"] = ResourceException(
+    fake_api.routes[f"nodes/{NODE}/qemu/101/snapshot"] = api_error(
         500, "Internal Server Error", "boom"
     )
     await _setup(hass, current_entry)

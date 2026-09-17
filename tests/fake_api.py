@@ -3,12 +3,14 @@
 """
 A Proxmox API that answers each path with its own, realistic response.
 
-The older tests patch `ProxmoxResource.get` to return one guest list for
+The older tests patch `ProxmoxVE.request` to return one guest list for
 every path. That passes setup only because the migration a version-1 entry
 goes through loses the node name, so the node paths are never really
 exercised; give the mock a real node and the disk lookup falls over the
-guest list. This fake keeps a route table keyed by the path after
-`/api2/json/`, exactly as the integration spells it, query string included.
+guest list. This fake keeps a route table keyed by the path exactly as the
+integration spells it, query string included, and answers the library's
+single-attempt request - so the library's own login, ticket renewal and
+failover run as they would against a real cluster.
 
 `default_routes()` describes one node, `pve`, with a VM, a container, two
 storages, one disk, one ZFS pool, pending updates and a finished backup.
@@ -18,19 +20,66 @@ Every value is invented; the shapes follow the Proxmox VE 9 API.
 from __future__ import annotations
 
 import copy
+import ssl
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
-from proxmoxer.core import ResourceException
-from requests.exceptions import ConnectionError as RequestsConnectionError
+import aiohttp
+from aiohttp.client_reqrep import ConnectionKey
+from aioproxmox.exceptions import ProxmoxAPIError
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-API_ROOT = "/api2/json/"
+    from aioproxmox import ProxmoxVE
 
 NODE = "pve"
+
+
+def api_error(
+    status: int, reason: str, message: str, path: str = ""
+) -> ProxmoxAPIError:
+    """
+    Return what the library raises for an answer with `status`.
+
+    Proxmox puts the reason into the HTTP status line - "Permission check
+    failed (/nodes/pve, Sys.PowerMgmt)" - and the library keeps it; the
+    three arguments mirror what proxmoxer's ResourceException took, so a
+    route table reads the same as before.
+    """
+    text = message or reason
+    return ProxmoxAPIError(status, text, path)
+
+
+def _connection_key(host: str = "192.168.10.101") -> ConnectionKey:
+    """Return the connection key an aiohttp connector error wants."""
+    return ConnectionKey(
+        host=host,
+        port=8006,
+        is_ssl=True,
+        ssl=True,
+        proxy=None,
+        proxy_auth=None,
+        proxy_headers_hash=None,
+        server_hostname=None,
+    )
+
+
+def connection_refused(host: str = "192.168.10.101") -> aiohttp.ClientConnectorError:
+    """Return the error aiohttp raises for a host that does not answer."""
+    return aiohttp.ClientConnectorError(
+        _connection_key(host), OSError(111, f"{host} refused the connection")
+    )
+
+
+def ssl_rejection(host: str = "192.168.10.101") -> aiohttp.ClientSSLError:
+    """Return the error aiohttp raises for a certificate it does not accept."""
+    return aiohttp.ClientConnectorCertificateError(
+        _connection_key(host), ssl.SSLCertVerificationError("self-signed certificate")
+    )
+
+
 NOW = 1767225600  # 2026-01-01 00:00:00 UTC, as the task log would report it
 
 STORAGE_LOCAL = {
@@ -483,7 +532,7 @@ def add_guest(routes: dict[str, Any], kind: str, vmid: int, name: str) -> None:
     status = qemu_status if kind == "qemu" else lxc_status
     routes[f"nodes/{NODE}/{kind}/{vmid}/status/current"] = status(vmid, name)
     if kind == "qemu":
-        routes[f"nodes/{NODE}/qemu/{vmid}/agent/get-fsinfo"] = ResourceException(
+        routes[f"nodes/{NODE}/qemu/{vmid}/agent/get-fsinfo"] = api_error(
             500, "Internal Server Error", "QEMU guest agent is not running"
         )
 
@@ -505,43 +554,41 @@ def remove_guest(routes: dict[str, Any], kind: str, vmid: int) -> None:
 
 
 class FakeProxmox:
-    """Answers `ProxmoxResource._request` from a route table."""
+    """Answers `ProxmoxVE._request_once` from a route table."""
 
     def __init__(self, routes: dict[str, Any] | None = None) -> None:
         """Start with the default routes unless given others."""
         self.routes = default_routes() if routes is None else routes
         self.calls: list[tuple[str, str, dict | None, dict | None]] = []
         # Hosts that refuse every connection, for the failover tests. The
-        # host is read off the request URL, so the same table serves every
+        # host is read off the API object, so the same table serves every
         # node of the pretend cluster.
         self.dead_hosts: set[str] = set()
         self.hosts_seen: list[str] = []
         # Raised on the next POST, for tests of a refused command.
         self.post_error: Exception | None = None
 
-    def request(
+    async def request(
         self,
-        resource: Any,
+        proxmox: ProxmoxVE,
         method: str,
-        data: dict | None = None,
+        path: str,
+        json_data: dict | None = None,
         params: dict | None = None,
     ) -> Any:
         """Answer one request the way the real API would, or refuse it."""
-        url = resource._store["base_url"]  # noqa: SLF001
-        path = url.split(API_ROOT, 1)[1] if API_ROOT in url else url
-        host = url.split("://", 1)[-1].split("/", 1)[0].split(":", 1)[0]
+        host = proxmox.host
         self.hosts_seen.append(host)
         if host in self.dead_hosts:
-            msg = f"{host} refused the connection"
-            raise RequestsConnectionError(msg)
-        self.calls.append((method, path, data, params))
+            raise connection_refused(host)
+        self.calls.append((method, path, json_data, params))
         if method != "GET":
             if self.post_error is not None:
                 raise self.post_error
             return f"UPID:{NODE}:0000FFFF:0000FFFF:69554D00:{path.rsplit('/', 1)[-1]}::root@pam:"
         if path not in self.routes:
             msg = f"no fake route for GET {path}"
-            raise ResourceException(404, "Not Found", msg)
+            raise api_error(404, "Not Found", msg, path)
         answer = self.routes[path]
         if isinstance(answer, Exception):
             raise answer
@@ -553,16 +600,16 @@ class FakeProxmox:
 
     @contextmanager
     def patched(self) -> Iterator[FakeProxmox]:
-        """Route every proxmoxer request here, and skip the login round-trip."""
+        """Route every request here, and skip the login round-trip."""
         with (
             patch(
-                "proxmoxer.ProxmoxResource._request",
+                "aioproxmox.ProxmoxVE._request_once",
                 autospec=True,
                 side_effect=self.request,
             ),
             patch(
-                "proxmoxer.backends.https.ProxmoxHTTPAuth._get_new_tokens",
-                return_value=None,
+                "aioproxmox.ProxmoxHTTPAuth._get_new_tokens",
+                new=AsyncMock(return_value=None),
             ),
         ):
             yield self

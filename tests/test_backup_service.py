@@ -7,7 +7,6 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
-from proxmoxer.core import ResourceException
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.proxmoxve import DOMAIN
@@ -19,7 +18,7 @@ from custom_components.proxmoxve.services import (
     vzdump_parameters,
 )
 
-from .fake_api import NODE, FakeProxmox
+from .fake_api import NODE, FakeProxmox, api_error
 from .test_setup_full import _setup, _state
 
 # What `tasks?source=active&typefilter=vzdump` lists while a run is on.
@@ -160,7 +159,7 @@ async def test_a_refusal_by_proxmox_reaches_the_caller(
 ) -> None:
     """Test a 403 - VM.Backup missing, say - comes back as an error with its text."""
     await _setup(hass, current_entry)
-    fake_api.post_error = ResourceException(
+    fake_api.post_error = api_error(
         403, "Permission check failed", "(/vms/101, [VM.Backup])"
     )
 

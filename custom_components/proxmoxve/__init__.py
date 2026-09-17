@@ -4,11 +4,11 @@
 
 from __future__ import annotations
 
-import warnings
 from typing import TYPE_CHECKING, Any
 
 import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
+from aioproxmox.exceptions import ProxmoxAPIError, ProxmoxAuthError
 from homeassistant.config_entries import SOURCE_IMPORT, ConfigEntry
 from homeassistant.const import (
     CONF_HOST,
@@ -30,20 +30,16 @@ from homeassistant.helpers import (
     issue_registry as ir,
 )
 from homeassistant.helpers.device_registry import DeviceInfo
-from proxmoxer import AuthenticationError
-from proxmoxer.core import ResourceException
-from requests.exceptions import (
-    ConnectionError as connError,
-)
-from requests.exceptions import (
-    ConnectTimeout,
-    RequestException,
-    RetryError,
-    SSLError,
-)
-from urllib3.exceptions import InsecureRequestWarning
 
-from .api import ProxmoxClient, auth_error_status, get_api
+from .api import (
+    CONNECTION_ERRORS,
+    REQUEST_ERRORS,
+    SSL_ERRORS,
+    ProxmoxClient,
+    auth_error_status,
+    get_api,
+    is_auth_error,
+)
 from .const import (
     CONF_AUTO_DISCOVERY,
     CONF_CONTAINERS,
@@ -135,9 +131,9 @@ from .storage import (
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from aioproxmox import ProxmoxVE
     from homeassistant.core import Event, HomeAssistant
     from homeassistant.helpers.typing import ConfigType
-    from proxmoxer import ProxmoxAPI
 
     from .models import ProxmoxDiskData, ProxmoxStorageData
 
@@ -186,8 +182,6 @@ CONFIG_SCHEMA = vol.Schema(
     },
     extra=vol.ALLOW_EXTRA,
 )
-
-warnings.filterwarnings("ignore", category=InsecureRequestWarning)
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
@@ -434,6 +428,7 @@ async def _async_rename_disk_devices(
     """
     entry_data = config_entry.data
     proxmox_client = ProxmoxClient(
+        hass,
         host=entry_data[CONF_HOST],
         port=entry_data[CONF_PORT],
         user=entry_data[CONF_USERNAME],
@@ -443,8 +438,8 @@ async def _async_rename_disk_devices(
         verify_ssl=entry_data[CONF_VERIFY_SSL],
     )
     try:
-        await hass.async_add_executor_job(proxmox_client.build_client)
-    except (AuthenticationError, RequestException, ResourceException):
+        await proxmox_client.build_client()
+    except REQUEST_ERRORS:
         LOGGER.warning("Disk device migration skipped: Proxmox is not reachable")
         return
     proxmox = proxmox_client.get_api_client()
@@ -452,10 +447,8 @@ async def _async_rename_disk_devices(
     dev_reg = dr.async_get(hass)
     for node in config_entry.data.get(CONF_NODES, []):
         try:
-            disks = await hass.async_add_executor_job(
-                get_api, proxmox, f"nodes/{node}/disks/list"
-            )
-        except (ResourceException, RequestException):
+            disks = await get_api(proxmox, f"nodes/{node}/disks/list")
+        except REQUEST_ERRORS:
             continue
 
         disks = disks if isinstance(disks, list) else []
@@ -491,7 +484,7 @@ async def _async_rename_disk_devices(
 
 async def _get_api_or_retry_setup(
     hass: HomeAssistant,
-    proxmox: ProxmoxAPI,
+    proxmox: ProxmoxVE,
     api_path: str,
     host: str,
 ) -> dict | list | None:
@@ -501,22 +494,15 @@ async def _get_api_or_retry_setup(
     An exception escaping async_setup_entry leaves the entry in SETUP_ERROR,
     which Home Assistant does not retry - the integration then stays dead until
     it is reloaded by hand, even once Proxmox is back. ConfigEntryNotReady is
-    what asks for the retry. build_client already translates these exceptions,
-    but it only reaches the network when authenticating with a password; with
-    an API token it constructs the client offline, so the first call to fail is
-    this one.
+    what asks for the retry. build_client already proved the credentials,
+    so what fails here is the host going away in between, or a read the
+    credentials may not make.
     """
     try:
-        return await hass.async_add_executor_job(get_api, proxmox, api_path)
-    except AuthenticationError as error:
-        raise ConfigEntryAuthFailed from error
-    except (
-        SSLError,
-        ConnectTimeout,
-        RetryError,
-        connError,
-        ResourceException,
-    ) as error:
+        return await get_api(proxmox, api_path)
+    except REQUEST_ERRORS as error:
+        if is_auth_error(error):
+            raise ConfigEntryAuthFailed from error
         msg = f"Connection is unreachable to host {host}"
         raise ConfigEntryNotReady(msg) from error
 
@@ -568,7 +554,7 @@ def _resource_exists_again(
 async def _async_setup_node(  # noqa: PLR0917
     hass: HomeAssistant,
     config_entry: ConfigEntry,
-    proxmox: ProxmoxAPI,
+    proxmox: ProxmoxVE,
     node: str,
     coordinators: dict[str, Any],
     nodes_api: list | dict | None,
@@ -679,10 +665,8 @@ async def _async_setup_node(  # noqa: PLR0917
 
     if config_entry.options.get(CONF_DISKS_ENABLE, True):
         try:
-            disks = await hass.async_add_executor_job(
-                get_api, proxmox, f"nodes/{node}/disks/list"
-            )
-        except ResourceException:
+            disks = await get_api(proxmox, f"nodes/{node}/disks/list")
+        except REQUEST_ERRORS:
             return coordinator_node
 
         disks = disks if disks is not None else []
@@ -702,10 +686,8 @@ async def _async_setup_node(  # noqa: PLR0917
         coordinators[f"{ProxmoxType.Disk}_{node}"] = coordinators_disk
 
         try:
-            pools = await hass.async_add_executor_job(
-                get_api, proxmox, f"nodes/{node}/disks/zfs"
-            )
-        except ResourceException as e:
+            pools = await get_api(proxmox, f"nodes/{node}/disks/zfs")
+        except REQUEST_ERRORS as e:
             LOGGER.exception(e)
             return coordinator_node
 
@@ -729,7 +711,7 @@ async def _async_setup_node(  # noqa: PLR0917
 async def _async_setup_guest(  # noqa: PLR0917
     hass: HomeAssistant,
     config_entry: ConfigEntry,
-    proxmox: ProxmoxAPI,
+    proxmox: ProxmoxVE,
     api_category: ProxmoxType,
     vm_id: str | int,
     coordinators: dict[str, Any],
@@ -782,7 +764,7 @@ async def _async_setup_guest(  # noqa: PLR0917
 async def _async_setup_storage(  # noqa: PLR0917
     hass: HomeAssistant,
     config_entry: ConfigEntry,
-    proxmox: ProxmoxAPI,
+    proxmox: ProxmoxVE,
     storage_id: str,
     coordinators: dict[str, Any],
     resources: list | dict | None,
@@ -851,7 +833,7 @@ async def _async_drop_coordinators(
 
 
 async def _learn_cluster_hosts(
-    hass: HomeAssistant, client: ProxmoxClient, proxmox: ProxmoxAPI
+    hass: HomeAssistant, client: ProxmoxClient, proxmox: ProxmoxVE
 ) -> str | None:
     """
     Tell the client what the other nodes of the cluster answer on.
@@ -866,8 +848,8 @@ async def _learn_cluster_hosts(
     listing marks as `local`, or None when that could not be read.
     """
     try:
-        status = await hass.async_add_executor_job(get_api, proxmox, "cluster/status")
-    except (AuthenticationError, RequestException, ResourceException) as error:
+        status = await get_api(proxmox, "cluster/status")
+    except REQUEST_ERRORS as error:
         LOGGER.debug("Cluster members not read, no fallback hosts: %s", error)
         return None
     nodes = [
@@ -964,6 +946,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
 
     # Construct an API client with the given data for the given host
     proxmox_client = ProxmoxClient(
+        hass,
         host=host,
         port=port,
         user=user,
@@ -973,33 +956,30 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
         verify_ssl=verify_ssl,
     )
     try:
-        await hass.async_add_executor_job(proxmox_client.build_client)
-    except AuthenticationError as error:
-        # proxmoxer raises the same error for a refused password and for an
+        await proxmox_client.build_client()
+    except ProxmoxAuthError as error:
+        # The login fails the same way for a refused password and for an
         # API that is up but not issuing tickets yet, as during boot. Only
         # 401 says anything about the credentials; the rest is "try later".
         if auth_error_status(error) not in (None, 401):
             raise ConfigEntryNotReady(str(error)) from error
         raise ConfigEntryAuthFailed from error
-    except SSLError as error:
+    except SSL_ERRORS as error:
         msg = (
             "Unable to verify proxmox server SSL. Try using 'verify_ssl: false' "
             f"for proxmox instance {host}:{port}"
         )
         raise ConfigEntryNotReady(msg) from error
-    except ConnectTimeout as error:
+    except TimeoutError as error:
         msg = f"Connection to host {host} timed out during setup"
         raise ConfigEntryNotReady(msg) from error
-    except RetryError as error:
+    except CONNECTION_ERRORS as error:
         msg = f"Connection is unreachable to host {host}"
         raise ConfigEntryNotReady(msg) from error
-    except connError as error:
-        msg = f"Connection is unreachable to host {host}"
-        raise ConfigEntryNotReady(msg) from error
-    except ResourceException as error:
+    except ProxmoxAPIError as error:
         raise ConfigEntryNotReady from error
 
-    proxmox = await hass.async_add_executor_job(proxmox_client.get_api_client)
+    proxmox = proxmox_client.get_api_client()
     local_node = await _learn_cluster_hosts(hass, proxmox_client, proxmox)
 
     coordinators: dict[
@@ -1091,6 +1071,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
     ha_admin_password = config_entry.data.get(CONF_HA_ADMIN_PASSWORD)
     if ha_admin_user and ha_admin_password:
         candidate_client = ProxmoxClient(
+            hass,
             host=host,
             port=port,
             user=ha_admin_user,
@@ -1100,15 +1081,8 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
             verify_ssl=verify_ssl,
         )
         try:
-            await hass.async_add_executor_job(candidate_client.build_client)
-        except (
-            AuthenticationError,
-            SSLError,
-            ConnectTimeout,
-            RetryError,
-            connError,
-            ResourceException,
-        ):
+            await candidate_client.build_client()
+        except REQUEST_ERRORS:
             LOGGER.exception(
                 "Unable to authenticate with the optional cluster HA admin "
                 "credentials; the Arm/Disarm HA buttons, the HA managed "
@@ -1120,9 +1094,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
     ha_resources_coordinator = None
     ha_admin_permissions = None
     if proxmox_ha_admin_client is not None:
-        proxmox_ha_admin = await hass.async_add_executor_job(
-            proxmox_ha_admin_client.get_api_client
-        )
+        proxmox_ha_admin = proxmox_ha_admin_client.get_api_client()
         ha_admin_permissions = await async_fetch_permissions(hass, proxmox_ha_admin)
         ha_resources_coordinator = ProxmoxHAResourcesCoordinator(
             hass=hass,
@@ -1153,19 +1125,9 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
         # update - off the majority of installations.
         try:
             ceph_available = (
-                await hass.async_add_executor_job(
-                    get_api, proxmox_ha_admin, "cluster/ceph/status"
-                )
-                is not None
+                await get_api(proxmox_ha_admin, "cluster/ceph/status") is not None
             )
-        except (
-            AuthenticationError,
-            SSLError,
-            ConnectTimeout,
-            RetryError,
-            connError,
-            ResourceException,
-        ):
+        except REQUEST_ERRORS:
             ceph_available = False
             LOGGER.debug("No Ceph cluster found, skipping its sensor")
 
@@ -1196,21 +1158,10 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
             """Build the coordinators, device and entities of a new resource."""
             try:
                 if api_category is ProxmoxType.Node:
-                    listing = await hass.async_add_executor_job(
-                        get_api, proxmox, "nodes"
-                    )
+                    listing = await get_api(proxmox, "nodes")
                 else:
-                    listing = await hass.async_add_executor_job(
-                        get_api, proxmox, "cluster/resources"
-                    )
-            except (
-                AuthenticationError,
-                SSLError,
-                ConnectTimeout,
-                RetryError,
-                connError,
-                ResourceException,
-            ) as error:
+                    listing = await get_api(proxmox, "cluster/resources")
+            except REQUEST_ERRORS as error:
                 LOGGER.warning(
                     "Discovery: could not set up %s %s: %s",
                     api_category,
@@ -1283,13 +1234,12 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
         """
         Stop scheduling refreshes once Home Assistant is shutting down.
 
-        Every poll runs in an executor thread and blocks there until the
-        Proxmox API answers or the request times out. A thread cannot be
-        cancelled, so a refresh that starts late holds up shutdown - which is
-        what Home Assistant means by "Integrations should cancel non-critical
-        tasks when receiving the stop event". Shutting the coordinators down
-        stops new polls from being scheduled; one already in flight still
-        finishes, bounded by the client's timeout.
+        A refresh that starts late holds up shutdown until the Proxmox API
+        answers or the request times out - which is what Home Assistant
+        means by "Integrations should cancel non-critical tasks when
+        receiving the stop event". Shutting the coordinators down stops new
+        polls from being scheduled; one already in flight still finishes,
+        bounded by the client's timeout.
         """
         for coordinator in coordinators.values():
             for single in (

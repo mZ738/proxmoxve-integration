@@ -17,6 +17,7 @@ import dataclasses
 from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
+from aioproxmox.exceptions import ProxmoxAPIError
 from homeassistant.const import (
     ATTR_AREA_ID,
     ATTR_DEVICE_ID,
@@ -35,11 +36,8 @@ from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
-from proxmoxer import AuthenticationError
-from proxmoxer.core import ResourceException
-from requests.exceptions import RequestException
 
-from .api import post_api
+from .api import CONNECTION_ERRORS, post_api
 from .const import (
     CONF_BACKUP_STORAGE,
     CONF_NODES,
@@ -336,10 +334,8 @@ async def _async_start(
     node = plan.node
     proxmox = plan.entry.runtime_data[PROXMOX_CLIENT].get_api_client()
     try:
-        upid = await hass.async_add_executor_job(
-            lambda: post_api(proxmox, f"nodes/{node}/vzdump", **params)
-        )
-    except ResourceException as error:
+        upid = await post_api(proxmox, f"nodes/{node}/vzdump", **params)
+    except ProxmoxAPIError as error:
         # 403 names the missing privilege in its message - VM.Backup on the
         # guest, or Datastore.AllocateSpace on the storage. Pass it on.
         raise HomeAssistantError(
@@ -347,7 +343,7 @@ async def _async_start(
             translation_key="backup_refused",
             translation_placeholders={"node": node, "error": str(error)},
         ) from error
-    except (AuthenticationError, RequestException) as error:
+    except CONNECTION_ERRORS as error:
         raise HomeAssistantError(
             translation_domain=DOMAIN,
             translation_key="backup_unreachable",

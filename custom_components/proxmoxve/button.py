@@ -526,7 +526,7 @@ class ProxmoxButtonEntity(ProxmoxEntity, ButtonEntity):
         self._attr_device_info = info_device
         self.config_entry = config_entry
 
-        def _button_press() -> None:
+        async def _button_press() -> None:
             """Post start command & tell HA state is on."""
             if api_category == ProxmoxType.Proxmox:
                 # Cluster-wide HA arm/disarm; not tied to a node or guest.
@@ -541,7 +541,7 @@ class ProxmoxButtonEntity(ProxmoxEntity, ButtonEntity):
                 node = data.node
                 vm_id = resource_id
 
-            result = post_api_command(
+            result = await post_api_command(
                 self,
                 proxmox_client=proxmox_client,
                 node=node,
@@ -566,6 +566,6 @@ class ProxmoxButtonEntity(ProxmoxEntity, ButtonEntity):
         """Return sensor availability."""
         return super().available and self.coordinator.data is not None
 
-    def press(self) -> None:
+    async def async_press(self) -> None:
         """Press the button."""
-        self._button_press_funct()
+        await self._button_press_funct()

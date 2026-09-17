@@ -110,21 +110,6 @@ def note_resource(
     _rewrite(hass, config_entry, kind)
 
 
-def note_resource_threadsafe(
-    hass: HomeAssistant,
-    config_entry: ConfigEntry,
-    kind: str,
-    key: str,
-    line: ResourceLine | None = None,
-    *,
-    listed: bool,
-) -> None:
-    """Do the same from an executor thread - the poll runs in one."""
-    hass.loop.call_soon_threadsafe(
-        lambda: note_resource(hass, config_entry, kind, key, line, listed=listed)
-    )
-
-
 @callback
 def forget_untracked(
     hass: HomeAssistant, config_entry: ConfigEntry, still_tracked: set[str]

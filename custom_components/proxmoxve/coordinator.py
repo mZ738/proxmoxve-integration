@@ -10,31 +10,20 @@ import json
 import re
 import time
 from datetime import datetime, timedelta
-from functools import partial
 from typing import TYPE_CHECKING, Any, Final
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 import homeassistant.util.dt as dt_util
+from aioproxmox.exceptions import ProxmoxAPIError, ProxmoxAuthError
 from homeassistant.const import CONF_HOST, CONF_USERNAME
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.typing import UNDEFINED, UndefinedType
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
-from proxmoxer import AuthenticationError, ProxmoxAPI
-from proxmoxer.core import ResourceException
-from requests.exceptions import (
-    ConnectionError as connError,
-)
-from requests.exceptions import (
-    ConnectTimeout,
-    HTTPError,
-    RetryError,
-    SSLError,
-)
 
-from .api import ProxmoxClient, get_api
+from .api import CONNECTION_ERRORS, auth_error_status, get_api
 from .const import (
     CONF_GUEST_FILE_PATH,
     CONF_NODE,
@@ -43,8 +32,6 @@ from .const import (
     GUEST_AGENT_REFUSALS,
     GUEST_FILE_READ_MAX_BYTES,
     LOGGER,
-    PROXMOX_CLIENT,
-    PROXMOX_HA_ADMIN_CLIENT,
     SLOW_UPDATE_INTERVAL,
     TASKS_UPDATE_INTERVAL,
     UPDATE_INTERVAL,
@@ -59,7 +46,7 @@ from .discovery import (
     resource_changes,
 )
 from .disk import disk_matches_id
-from .issues import FORBIDDEN, ResourceLine, note_resource_threadsafe
+from .issues import FORBIDDEN, ResourceLine, note_resource
 from .models import (
     ProxmoxBackupData,
     ProxmoxBackupInfoData,
@@ -83,6 +70,7 @@ from .storage import is_shared_storage_id, storage_entries, storage_name
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
+    from aioproxmox import ProxmoxVE
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
 
@@ -911,32 +899,6 @@ def parse_updates(api_status: list[dict[str, Any]], node: str) -> ProxmoxUpdateD
     )
 
 
-class CurrentApiMixin:
-    """
-    Hand a coordinator the API object its client is using *now*.
-
-    A coordinator is built with the ProxmoxAPI object of the moment. When the
-    client later moves to another node of the cluster, that object points at
-    a host that is gone. Resolving through the client on every access means
-    the move reaches every coordinator without any of them being told.
-    Before setup has stored the client, or for an object no client built,
-    the one handed in is used as it is.
-    """
-
-    _proxmox: ProxmoxAPI
-    config_entry: ConfigEntry
-
-    @property
-    def proxmox(self) -> ProxmoxAPI:
-        """Return the API object to use for the next request."""
-        client = _client_for(self.config_entry, self._proxmox)
-        return client.get_api_client() if client is not None else self._proxmox
-
-    @proxmox.setter
-    def proxmox(self, proxmox: ProxmoxAPI) -> None:
-        self._proxmox = proxmox
-
-
 def poll_interval(config_entry: ConfigEntry) -> timedelta:
     """
     Return the interval of the coordinators that follow the cluster live.
@@ -986,7 +948,7 @@ class SharedResources:
         self,
         hass: HomeAssistant,
         config_entry: ConfigEntry,
-        proxmox: ProxmoxAPI,
+        proxmox: ProxmoxVE,
         resource_type: str | None = None,
         *,
         fresh: bool = False,
@@ -1000,8 +962,7 @@ class SharedResources:
         async with self._lock:
             if fresh or time.monotonic() - self._read_at >= RESOURCES_TTL:
                 try:
-                    rows = await hass.async_add_executor_job(
-                        poll_api,
+                    rows = await poll_api(
                         hass,
                         config_entry,
                         proxmox,
@@ -1035,7 +996,6 @@ def shared_resources(hass: HomeAssistant, config_entry: ConfigEntry) -> SharedRe
 
 
 class ProxmoxCoordinator(
-    CurrentApiMixin,
     DataUpdateCoordinator[
         ProxmoxBackupData
         | ProxmoxBackupInfoData
@@ -1057,9 +1017,7 @@ class ProxmoxCoordinator(
     """Proxmox VE data update coordinator."""
 
 
-class ProxmoxDiscoveryCoordinator(
-    CurrentApiMixin, DataUpdateCoordinator[dict[str, list[str]]]
-):
+class ProxmoxDiscoveryCoordinator(DataUpdateCoordinator[dict[str, list[str]]]):
     """
     Watch the cluster for nodes, guests and storages appearing or leaving.
 
@@ -1077,7 +1035,7 @@ class ProxmoxDiscoveryCoordinator(
         self,
         *,
         hass: HomeAssistant,
-        proxmox: ProxmoxAPI,
+        proxmox: ProxmoxVE,
         config_entry: ConfigEntry,
         add_resource: Callable[[ProxmoxType, str], Awaitable[None]],
         remove_resource: Callable[[ProxmoxType, str], Awaitable[None]],
@@ -1144,7 +1102,7 @@ class ProxmoxHAResourcesCoordinator(DataUpdateCoordinator[set[str]]):
         self,
         *,
         hass: HomeAssistant,
-        proxmox: ProxmoxAPI,
+        proxmox: ProxmoxVE,
         config_entry: ConfigEntry,
     ) -> None:
         """Initialize the Proxmox HA resources coordinator."""
@@ -1164,8 +1122,7 @@ class ProxmoxHAResourcesCoordinator(DataUpdateCoordinator[set[str]]):
 
     async def _async_update_data(self) -> set[str]:
         """Return the set of HA-managed resource sids (e.g. 'vm:100', 'ct:105')."""
-        resources = await self.hass.async_add_executor_job(
-            poll_api,
+        resources = await poll_api(
             self.hass,
             self.config_entry,
             self.proxmox,
@@ -1196,7 +1153,7 @@ class ProxmoxHAStatusCoordinator(ProxmoxCoordinator):
         self,
         *,
         hass: HomeAssistant,
-        proxmox: ProxmoxAPI,
+        proxmox: ProxmoxVE,
         config_entry: ConfigEntry,
     ) -> None:
         """Initialize the Proxmox cluster HA status coordinator."""
@@ -1216,8 +1173,7 @@ class ProxmoxHAStatusCoordinator(ProxmoxCoordinator):
 
     async def _async_update_data(self) -> ProxmoxHAStatusData:
         """Update the cluster HA status."""
-        api_status = await self.hass.async_add_executor_job(
-            poll_api,
+        api_status = await poll_api(
             self.hass,
             self.config_entry,
             self.proxmox,
@@ -1248,7 +1204,7 @@ class ProxmoxClusterSummaryCoordinator(ProxmoxCoordinator):
         self,
         *,
         hass: HomeAssistant,
-        proxmox: ProxmoxAPI,
+        proxmox: ProxmoxVE,
         config_entry: ConfigEntry,
     ) -> None:
         """Initialize the Proxmox cluster summary coordinator."""
@@ -1290,7 +1246,7 @@ class ProxmoxBackupInfoCoordinator(ProxmoxCoordinator):
         self,
         *,
         hass: HomeAssistant,
-        proxmox: ProxmoxAPI,
+        proxmox: ProxmoxVE,
         config_entry: ConfigEntry,
     ) -> None:
         """Initialize the Proxmox backup info coordinator."""
@@ -1310,8 +1266,7 @@ class ProxmoxBackupInfoCoordinator(ProxmoxCoordinator):
 
     async def _async_update_data(self) -> ProxmoxBackupInfoData:
         """Update which guests no backup job covers."""
-        api_status = await self.hass.async_add_executor_job(
-            poll_api,
+        api_status = await poll_api(
             self.hass,
             self.config_entry,
             self.proxmox,
@@ -1334,7 +1289,7 @@ class ProxmoxBackupCoordinator(ProxmoxCoordinator):
         self,
         *,
         hass: HomeAssistant,
-        proxmox: ProxmoxAPI,
+        proxmox: ProxmoxVE,
         config_entry: ConfigEntry,
         node_name: str,
     ) -> None:
@@ -1357,8 +1312,7 @@ class ProxmoxBackupCoordinator(ProxmoxCoordinator):
         """Update the node's most recent backup run."""
         # Finished tasks only (`source=archive`, the default, spelled out),
         # newest first, and just the one: the log can hold thousands.
-        api_status = await self.hass.async_add_executor_job(
-            poll_api,
+        api_status = await poll_api(
             self.hass,
             self.config_entry,
             self.proxmox,
@@ -1373,8 +1327,7 @@ class ProxmoxBackupCoordinator(ProxmoxCoordinator):
 
         # And the one that may be running right now, which the archive
         # never lists: no end time, no verdict yet.
-        active = await self.hass.async_add_executor_job(
-            poll_api,
+        active = await poll_api(
             self.hass,
             self.config_entry,
             self.proxmox,
@@ -1393,7 +1346,7 @@ class ProxmoxReplicationCoordinator(ProxmoxCoordinator):
         self,
         *,
         hass: HomeAssistant,
-        proxmox: ProxmoxAPI,
+        proxmox: ProxmoxVE,
         config_entry: ConfigEntry,
         node_name: str,
     ) -> None:
@@ -1416,8 +1369,7 @@ class ProxmoxReplicationCoordinator(ProxmoxCoordinator):
         """Update the node's replication jobs."""
         # Proxmox filters this to guests the credentials may audit, so the
         # least-privilege client sees exactly the jobs it is entitled to.
-        api_status = await self.hass.async_add_executor_job(
-            poll_api,
+        api_status = await poll_api(
             self.hass,
             self.config_entry,
             self.proxmox,
@@ -1440,7 +1392,7 @@ class ProxmoxSubscriptionCoordinator(ProxmoxCoordinator):
         self,
         *,
         hass: HomeAssistant,
-        proxmox: ProxmoxAPI,
+        proxmox: ProxmoxVE,
         config_entry: ConfigEntry,
         node_name: str,
     ) -> None:
@@ -1463,8 +1415,7 @@ class ProxmoxSubscriptionCoordinator(ProxmoxCoordinator):
         """Update the node's subscription state."""
         # Needs no permission beyond being logged in, so it uses the same
         # least-privilege credentials as everything else.
-        api_status = await self.hass.async_add_executor_job(
-            poll_api,
+        api_status = await poll_api(
             self.hass,
             self.config_entry,
             self.proxmox,
@@ -1492,7 +1443,7 @@ class ProxmoxCephCoordinator(ProxmoxCoordinator):
         self,
         *,
         hass: HomeAssistant,
-        proxmox: ProxmoxAPI,
+        proxmox: ProxmoxVE,
         config_entry: ConfigEntry,
     ) -> None:
         """Initialize the Proxmox Ceph coordinator."""
@@ -1512,8 +1463,7 @@ class ProxmoxCephCoordinator(ProxmoxCoordinator):
 
     async def _async_update_data(self) -> ProxmoxCephData:
         """Update the Ceph cluster health."""
-        api_status = await self.hass.async_add_executor_job(
-            poll_api,
+        api_status = await poll_api(
             self.hass,
             self.config_entry,
             self.proxmox,
@@ -1536,7 +1486,7 @@ class ProxmoxCertificateCoordinator(ProxmoxCoordinator):
         self,
         *,
         hass: HomeAssistant,
-        proxmox: ProxmoxAPI,
+        proxmox: ProxmoxVE,
         config_entry: ConfigEntry,
         node_name: str,
     ) -> None:
@@ -1559,8 +1509,7 @@ class ProxmoxCertificateCoordinator(ProxmoxCoordinator):
         """Update the node's certificate information."""
         # This endpoint needs no permission beyond being logged in, so it is
         # read with the same least-privilege credentials as everything else.
-        api_status = await self.hass.async_add_executor_job(
-            poll_api,
+        api_status = await poll_api(
             self.hass,
             self.config_entry,
             self.proxmox,
@@ -1611,7 +1560,7 @@ class ProxmoxNodeCoordinator(ProxmoxCoordinator):
         self,
         *,
         hass: HomeAssistant,
-        proxmox: ProxmoxAPI,
+        proxmox: ProxmoxVE,
         config_entry: ConfigEntry,
         api_category: str,
         node_name: str,
@@ -1690,8 +1639,7 @@ class ProxmoxNodeCoordinator(ProxmoxCoordinator):
         node_status = ""
         node_api = {}
         api_status = {}
-        if nodes_api := await self.hass.async_add_executor_job(
-            poll_api,
+        if nodes_api := await poll_api(
             self.hass,
             self.config_entry,
             self.proxmox,
@@ -1709,8 +1657,7 @@ class ProxmoxNodeCoordinator(ProxmoxCoordinator):
 
         if node_status == "online":
             api_path = f"nodes/{self.resource_id}/status"
-            api_status = await self.hass.async_add_executor_job(
-                poll_api,
+            api_status = await poll_api(
                 self.hass,
                 self.config_entry,
                 self.proxmox,
@@ -1728,8 +1675,7 @@ class ProxmoxNodeCoordinator(ProxmoxCoordinator):
             api_status["disk_used"] = node_api["disk"]
 
             api_path = f"nodes/{self.resource_id}/version"
-            api_status["version"] = await self.hass.async_add_executor_job(
-                poll_api,
+            api_status["version"] = await poll_api(
                 self.hass,
                 self.config_entry,
                 self.proxmox,
@@ -1740,17 +1686,14 @@ class ProxmoxNodeCoordinator(ProxmoxCoordinator):
 
             if self._mac_addresses is None:
                 api_path = f"nodes/{self.resource_id}/network"
-                interfaces = await self.hass.async_add_executor_job(
-                    partial(
-                        poll_api,
-                        self.hass,
-                        self.config_entry,
-                        self.proxmox,
-                        api_path,
-                        ProxmoxType.Node,
-                        self.resource_id,
-                        issue_crete_permissions=False,
-                    )
+                interfaces = await poll_api(
+                    self.hass,
+                    self.config_entry,
+                    self.proxmox,
+                    api_path,
+                    ProxmoxType.Node,
+                    self.resource_id,
+                    issue_crete_permissions=False,
                 )
                 # Empty stays "not read yet" only when the call failed; an
                 # answered listing without a port is final.
@@ -1758,8 +1701,7 @@ class ProxmoxNodeCoordinator(ProxmoxCoordinator):
                     self._mac_addresses = parse_mac_addresses(interfaces)
 
             api_path = f"nodes/{self.resource_id}/qemu"
-            qemu_status = await self.hass.async_add_executor_job(
-                poll_api,
+            qemu_status = await poll_api(
                 self.hass,
                 self.config_entry,
                 self.proxmox,
@@ -1779,8 +1721,7 @@ class ProxmoxNodeCoordinator(ProxmoxCoordinator):
             api_status["qemu"] = node_qemu
 
             api_path = f"nodes/{self.resource_id}/lxc"
-            lxc_status = await self.hass.async_add_executor_job(
-                poll_api,
+            lxc_status = await poll_api(
                 self.hass,
                 self.config_entry,
                 self.proxmox,
@@ -1930,17 +1871,14 @@ async def poll_snapshots(
 ) -> dict[str, Any]:
     """Read a guest's snapshot list; a failed read leaves the figures unknown."""
     try:
-        entries = await coordinator.hass.async_add_executor_job(
-            partial(
-                poll_api,
-                coordinator.hass,
-                coordinator.config_entry,
-                coordinator.proxmox,
-                f"nodes/{node_name!s}/{kind}/{coordinator.resource_id}/snapshot",
-                kind,
-                coordinator.resource_id,
-                issue_crete_permissions=False,
-            )
+        entries = await poll_api(
+            coordinator.hass,
+            coordinator.config_entry,
+            coordinator.proxmox,
+            f"nodes/{node_name!s}/{kind}/{coordinator.resource_id}/snapshot",
+            kind,
+            coordinator.resource_id,
+            issue_crete_permissions=False,
         )
     except UpdateFailed:
         entries = None
@@ -1954,7 +1892,7 @@ class ProxmoxQEMUCoordinator(ProxmoxCoordinator):
         self,
         *,
         hass: HomeAssistant,
-        proxmox: ProxmoxAPI,
+        proxmox: ProxmoxVE,
         config_entry: ConfigEntry,
         api_category: str,
         qemu_id: int,
@@ -1985,21 +1923,18 @@ class ProxmoxQEMUCoordinator(ProxmoxCoordinator):
         repair is one per feature and lists the VMs it concerns.
         """
         try:
-            result = await self.hass.async_add_executor_job(
-                partial(
-                    poll_api,
-                    self.hass,
-                    self.config_entry,
-                    self.proxmox,
-                    api_path,
-                    ProxmoxType.QEMU,
-                    self.resource_id,
-                    issue_crete_permissions=False,
-                )
+            result = await poll_api(
+                self.hass,
+                self.config_entry,
+                self.proxmox,
+                api_path,
+                ProxmoxType.QEMU,
+                self.resource_id,
+                issue_crete_permissions=False,
             )
         except UpdateFailed as error:
             cause = error.__cause__
-            if not (isinstance(cause, ResourceException) and cause.status_code == 403):
+            if not (isinstance(cause, ProxmoxAPIError) and cause.status == 403):
                 raise
             note_guest_agent_refusal(
                 self.hass,
@@ -2034,8 +1969,7 @@ class ProxmoxQEMUCoordinator(ProxmoxCoordinator):
 
         if node_name is not None:
             api_path = f"nodes/{node_name!s}/qemu/{self.resource_id}/status/current"
-            api_status = await self.hass.async_add_executor_job(
-                poll_api,
+            api_status = await poll_api(
                 self.hass,
                 self.config_entry,
                 self.proxmox,
@@ -2206,7 +2140,7 @@ class ProxmoxLXCCoordinator(ProxmoxCoordinator):
         self,
         *,
         hass: HomeAssistant,
-        proxmox: ProxmoxAPI,
+        proxmox: ProxmoxVE,
         config_entry: ConfigEntry,
         api_category: str,
         container_id: int,
@@ -2246,8 +2180,7 @@ class ProxmoxLXCCoordinator(ProxmoxCoordinator):
 
         if node_name is not None:
             api_path = f"nodes/{node_name!s}/lxc/{self.resource_id}/status/current"
-            api_status = await self.hass.async_add_executor_job(
-                poll_api,
+            api_status = await poll_api(
                 self.hass,
                 self.config_entry,
                 self.proxmox,
@@ -2267,17 +2200,14 @@ class ProxmoxLXCCoordinator(ProxmoxCoordinator):
         addresses = parse_guest_addresses(ProxmoxType.LXC, None)
         if api_status.get("status") == "running":
             try:
-                interfaces = await self.hass.async_add_executor_job(
-                    partial(
-                        poll_api,
-                        self.hass,
-                        self.config_entry,
-                        self.proxmox,
-                        f"nodes/{node_name!s}/lxc/{self.resource_id}/interfaces",
-                        ProxmoxType.LXC,
-                        self.resource_id,
-                        issue_crete_permissions=False,
-                    )
+                interfaces = await poll_api(
+                    self.hass,
+                    self.config_entry,
+                    self.proxmox,
+                    f"nodes/{node_name!s}/lxc/{self.resource_id}/interfaces",
+                    ProxmoxType.LXC,
+                    self.resource_id,
+                    issue_crete_permissions=False,
                 )
             except UpdateFailed:
                 interfaces = None
@@ -2336,7 +2266,7 @@ class ProxmoxStorageCoordinator(ProxmoxCoordinator):
         self,
         *,
         hass: HomeAssistant,
-        proxmox: ProxmoxAPI,
+        proxmox: ProxmoxVE,
         config_entry: ConfigEntry,
         api_category: str,
         storage_id: str,
@@ -2402,8 +2332,7 @@ class ProxmoxStorageCoordinator(ProxmoxCoordinator):
         storage_label = api_status.get("storage")
         if node_name is not None and storage_label:
             api_path = f"nodes/{node_name}/storage?storage={quote(str(storage_label))}"
-            node_storages = await self.hass.async_add_executor_job(
-                poll_api,
+            node_storages = await poll_api(
                 self.hass,
                 self.config_entry,
                 self.proxmox,
@@ -2437,7 +2366,7 @@ class ProxmoxZFSCoordinator(ProxmoxCoordinator):
         self,
         *,
         hass: HomeAssistant,
-        proxmox: ProxmoxAPI,
+        proxmox: ProxmoxVE,
         config_entry: ConfigEntry,
         api_category: str,
         node_name: str,
@@ -2461,8 +2390,7 @@ class ProxmoxZFSCoordinator(ProxmoxCoordinator):
     async def _async_update_data(self) -> ProxmoxStorageData:
         """Update data for Proxmox Update."""
         api_path = f"nodes/{self.node_name}/disks/zfs"
-        pools = await self.hass.async_add_executor_job(
-            poll_api,
+        pools = await poll_api(
             self.hass,
             self.config_entry,
             self.proxmox,
@@ -2498,7 +2426,7 @@ class ProxmoxUpdateCoordinator(ProxmoxCoordinator):
         self,
         *,
         hass: HomeAssistant,
-        proxmox: ProxmoxAPI,
+        proxmox: ProxmoxVE,
         config_entry: ConfigEntry,
         api_category: str,
         node_name: str,
@@ -2524,8 +2452,7 @@ class ProxmoxUpdateCoordinator(ProxmoxCoordinator):
         node_status = ""
         node_api = {}
         api_status = None
-        if nodes_api := await self.hass.async_add_executor_job(
-            poll_api,
+        if nodes_api := await poll_api(
             self.hass,
             self.config_entry,
             self.proxmox,
@@ -2544,8 +2471,7 @@ class ProxmoxUpdateCoordinator(ProxmoxCoordinator):
         if node_status == "online":
             if self.node_name is not None:
                 api_path = f"nodes/{self.node_name!s}/apt/update"
-                api_status = await self.hass.async_add_executor_job(
-                    poll_api,
+                api_status = await poll_api(
                     self.hass,
                     self.config_entry,
                     self.proxmox,
@@ -2688,7 +2614,7 @@ class ProxmoxDiskCoordinator(ProxmoxCoordinator):
         self,
         *,
         hass: HomeAssistant,
-        proxmox: ProxmoxAPI,
+        proxmox: ProxmoxVE,
         config_entry: ConfigEntry,
         api_category: str,
         node_name: str,
@@ -2713,8 +2639,7 @@ class ProxmoxDiskCoordinator(ProxmoxCoordinator):
         """Update data  for Proxmox Disk."""
         if self.node_name is not None:
             api_path = f"nodes/{self.node_name}/disks/list"
-            api_status = await self.hass.async_add_executor_job(
-                poll_api,
+            api_status = await poll_api(
                 self.hass,
                 self.config_entry,
                 self.proxmox,
@@ -2753,8 +2678,7 @@ class ProxmoxDiskCoordinator(ProxmoxCoordinator):
             if disk_matches_id(disk, self.resource_id):
                 api_path = f"nodes/{self.node_name}/disks/smart?disk={disk['devpath']}"
                 try:
-                    disk_attributes_api = await self.hass.async_add_executor_job(
-                        poll_api,
+                    disk_attributes_api = await poll_api(
                         self.hass,
                         self.config_entry,
                         self.proxmox,
@@ -2829,7 +2753,7 @@ class ProxmoxTaskCoordinator(ProxmoxCoordinator):
         self,
         *,
         hass: HomeAssistant,
-        proxmox: ProxmoxAPI,
+        proxmox: ProxmoxVE,
         config_entry: ConfigEntry,
         api_category: str,
         node_name: str,
@@ -2853,8 +2777,7 @@ class ProxmoxTaskCoordinator(ProxmoxCoordinator):
         """Update data for Proxmox Tasks."""
         if self.node_name is not None:
             api_path = f"nodes/{self.node_name}/tasks"
-            api_status = await self.hass.async_add_executor_job(
-                poll_api,
+            api_status = await poll_api(
                 self.hass,
                 self.config_entry,
                 self.proxmox,
@@ -2975,85 +2898,25 @@ def update_device_via(
         )
 
 
-# Keyword-only arguments are not an option here: every caller reaches this
-# through `hass.async_add_executor_job(poll_api, ...)`, which forwards its
-# arguments positionally and accepts no keywords.
-def _client_for(config_entry: ConfigEntry, proxmox: ProxmoxAPI) -> ProxmoxClient | None:
-    """Return the client that built `proxmox`, if setup has stored one."""
-    runtime = getattr(config_entry, "runtime_data", None)
-    if not isinstance(runtime, dict):
-        return None
-    for key in (PROXMOX_CLIENT, PROXMOX_HA_ADMIN_CLIENT):
-        client = runtime.get(key)
-        if client is not None and client.issued(proxmox):
-            return client
-    return None
-
-
-def _retry_on_another_node(
-    client: ProxmoxClient | None,
-    generation: int,
-    api_path: str,
-    error: Exception,
-) -> dict[str, Any] | None:
-    """
-    Move the client to another node of the cluster and repeat the request.
-
-    Everything goes through the one configured host, and its pveproxy
-    forwards to the others - so that host being down took the whole cluster
-    out of Home Assistant while three nodes were running. The client knows
-    the other nodes from `cluster/status`; if one of them answers, the read
-    is repeated there. If none does, the original failure stands.
-    """
-    if client is None or not client.failover(generation):
-        raise error
-    return get_api(client.get_api_client(), api_path)
-
-
-def _retry_after_relogin(
-    config_entry: ConfigEntry,
-    proxmox: ProxmoxAPI,
-    api_path: str,
-    error: AuthenticationError,
-) -> dict[str, Any] | None:
-    """
-    Log in once more and repeat the request before asking for credentials.
-
-    A ticket outlives a host that is off for more than two hours, and the
-    renewal proxmoxer then attempts is refused like a wrong password. Nodes
-    that are switched off overnight hit this every morning and ended up in
-    the reauthentication flow although nothing about the credentials had
-    changed. A fresh login with the stored password settles it either way:
-    it works, or it fails for a reason that really is the credentials.
-    """
-    client = _client_for(config_entry, proxmox)
-    if client is None:
-        raise ConfigEntryAuthFailed from error
-    try:
-        renewed = client.relogin()
-    except AuthenticationError as again:
-        raise ConfigEntryAuthFailed from again
-    if not renewed:
-        # Token authentication has nothing to renew; this failure is real.
-        raise ConfigEntryAuthFailed from error
-    LOGGER.debug("Logged in again after the ticket was refused for %s", api_path)
-    try:
-        return get_api(proxmox, api_path)
-    except AuthenticationError as again:
-        raise ConfigEntryAuthFailed from again
-
-
-def poll_api(  # noqa: PLR0917
+async def poll_api(  # noqa: PLR0917
     hass: HomeAssistant,
     config_entry: ConfigEntry,
-    proxmox: ProxmoxAPI,
+    proxmox: ProxmoxVE,
     api_path: str,
     api_category: ProxmoxType,
     resource_id: str | int | None = None,
     *,
     issue_crete_permissions: bool | None = True,
-) -> dict[str, Any] | None:
-    """Return data from the Proxmox Node API."""
+) -> Any:
+    """
+    Return data from the Proxmox API, or None for a read the credentials may not make.
+
+    The API object logs in again when a ticket was refused and moves to
+    another node of the cluster when the configured host does not answer;
+    what arrives here is what is left after that. A refused login is the
+    credentials' fault and asks for new ones; a host that is not there
+    fails the update; a 403 goes on the entry's repair and yields None.
+    """
 
     def permission_to_resource(
         api_category: ProxmoxType,
@@ -3083,26 +2946,21 @@ def poll_api(  # noqa: PLR0917
             case _:
                 return "Unmapped"
 
-    client = _client_for(config_entry, proxmox)
-    generation = client.generation if client is not None else 0
     try:
-        try:
-            api_data = get_api(proxmox, api_path)
-        except AuthenticationError as error:
-            api_data = _retry_after_relogin(config_entry, proxmox, api_path, error)
-        except (ConnectTimeout, ConnectionError, connError, RetryError) as error:
-            api_data = _retry_on_another_node(client, generation, api_path, error)
-    except (
-        SSLError,
-        ConnectTimeout,
-        HTTPError,
-        ConnectionError,
-        connError,
-        RetryError,
-    ) as error:
+        api_data = await get_api(proxmox, api_path)
+    except ProxmoxAuthError as error:
+        # The fresh login with the stored password was refused as well -
+        # unless the API only said it is not issuing tickets yet.
+        if auth_error_status(error) not in (None, 401):
+            raise UpdateFailed(error) from error
+        raise ConfigEntryAuthFailed from error
+    except CONNECTION_ERRORS as error:
         raise UpdateFailed(error) from error
-    except ResourceException as error:
-        if error.status_code == 403 and issue_crete_permissions:
+    except ProxmoxAPIError as error:
+        if error.status == 401:
+            # A token has no login to repeat; this refusal is final.
+            raise ConfigEntryAuthFailed from error
+        if error.status == 403 and issue_crete_permissions:
             # The update coordinator passes "Update <node>" as its resource
             # id; the cluster-wide reads pass none at all. Neither may end
             # up in the repair text as is.
@@ -3111,7 +2969,7 @@ def poll_api(  # noqa: PLR0917
                 if resource_id is not None
                 else ""
             )
-            note_resource_threadsafe(
+            note_resource(
                 hass,
                 config_entry,
                 FORBIDDEN,
@@ -3132,7 +2990,7 @@ def poll_api(  # noqa: PLR0917
             )
             return None
         raise UpdateFailed from error
-    note_resource_threadsafe(
+    note_resource(
         hass, config_entry, FORBIDDEN, f"{api_category}_{resource_id}", listed=False
     )
     return api_data

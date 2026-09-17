@@ -4,7 +4,7 @@
 
 from unittest.mock import patch
 
-import proxmoxer
+from aioproxmox.exceptions import ProxmoxAuthError
 from homeassistant.config_entries import (
     SOURCE_REAUTH,
 )
@@ -15,7 +15,6 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
-from requests.exceptions import ConnectTimeout, SSLError
 
 from custom_components.proxmoxve import DOMAIN
 
@@ -23,6 +22,7 @@ from .const import (
     USER_INPUT_AUTH,
     USER_INPUT_OK,
 )
+from .fake_api import ssl_rejection
 
 
 async def test_step_reauth(hass: HomeAssistant) -> None:
@@ -70,7 +70,7 @@ async def test_step_reauth(hass: HomeAssistant) -> None:
 
     with patch(
         "custom_components.proxmoxve.ProxmoxClient.build_client",
-        side_effect=proxmoxer.backends.https.AuthenticationError("mock msg"),
+        side_effect=ProxmoxAuthError("mock msg"),
         return_value=None,
     ):
         result_auth_error = await hass.config_entries.flow.async_configure(
@@ -90,7 +90,7 @@ async def test_step_reauth(hass: HomeAssistant) -> None:
 
     with patch(
         "custom_components.proxmoxve.ProxmoxClient.build_client",
-        side_effect=SSLError,
+        side_effect=ssl_rejection(),
         return_value=None,
     ):
         result_auth_ssl_rejection = await hass.config_entries.flow.async_configure(
@@ -110,7 +110,7 @@ async def test_step_reauth(hass: HomeAssistant) -> None:
 
     with patch(
         "custom_components.proxmoxve.ProxmoxClient.build_client",
-        side_effect=ConnectTimeout,
+        side_effect=TimeoutError,
         return_value=None,
     ):
         result_auth_ssl_rejectio = await hass.config_entries.flow.async_configure(

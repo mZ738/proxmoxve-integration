@@ -16,7 +16,6 @@ from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import issue_registry as ir
-from proxmoxer.core import ResourceException
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.proxmoxve import DOMAIN
@@ -30,7 +29,7 @@ from custom_components.proxmoxve.const import (
     ProxmoxType,
 )
 
-from .fake_api import NODE, FakeProxmox, lxc_status
+from .fake_api import NODE, FakeProxmox, api_error, lxc_status
 
 
 async def _setup(hass: HomeAssistant, entry: MockConfigEntry) -> None:
@@ -161,7 +160,7 @@ async def test_no_sys_modify_means_no_update_entity_and_no_repair(
     fake_api.routes["access/permissions"] = {
         "/": {"Sys.Audit": 1, "VM.Audit": 1, "Datastore.Audit": 1},
     }
-    fake_api.routes[f"nodes/{NODE}/apt/update"] = ResourceException(
+    fake_api.routes[f"nodes/{NODE}/apt/update"] = api_error(
         403, "Permission check failed", "(/nodes/pve, [Sys.Modify])"
     )
 
@@ -206,7 +205,7 @@ async def test_unknown_permissions_still_create_the_update_entity(
     hass: HomeAssistant, fake_api: FakeProxmox, current_entry: MockConfigEntry
 ) -> None:
     """Test not being able to read the privileges gates nothing."""
-    fake_api.routes["access/permissions"] = ResourceException(
+    fake_api.routes["access/permissions"] = api_error(
         403, "Permission check failed", ""
     )
 

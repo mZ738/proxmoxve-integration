@@ -7,8 +7,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 import homeassistant.helpers.config_validation as cv
-import proxmoxer
 import voluptuous as vol
+from aioproxmox.exceptions import ProxmoxAuthError
 from homeassistant import config_entries
 from homeassistant.const import (
     CONF_BASE,
@@ -22,9 +22,8 @@ from homeassistant.core import callback
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers import selector
-from requests.exceptions import ConnectTimeout, SSLError
 
-from .api import ProxmoxClient, get_api
+from .api import CONNECTION_ERRORS, SSL_ERRORS, ProxmoxClient, get_api
 from .const import (
     CONF_AUTO_DISCOVERY,
     CONF_BACKUP_STORAGE,
@@ -178,6 +177,7 @@ class ProxmoxOptionsFlowHandler(config_entries.OptionsFlow):
 
             try:
                 self._proxmox_client = ProxmoxClient(
+                    self.hass,
                     host=host,
                     port=port,
                     user=user,
@@ -187,15 +187,13 @@ class ProxmoxOptionsFlowHandler(config_entries.OptionsFlow):
                     verify_ssl=verify_ssl,
                 )
 
-                await self.hass.async_add_executor_job(
-                    self._proxmox_client.build_client
-                )
+                await self._proxmox_client.build_client()
 
-            except proxmoxer.AuthenticationError:
+            except ProxmoxAuthError:
                 errors[CONF_USERNAME] = "auth_error"
-            except SSLError:
+            except SSL_ERRORS:
                 errors[CONF_VERIFY_SSL] = "ssl_rejection"
-            except ConnectTimeout:
+            except CONNECTION_ERRORS:
                 errors[CONF_HOST] = "cant_connect"
             except Exception:  # pylint: disable=broad-except
                 errors[CONF_BASE] = "general_error"
@@ -257,6 +255,7 @@ class ProxmoxOptionsFlowHandler(config_entries.OptionsFlow):
             if user and password:
                 try:
                     cluster_client = ProxmoxClient(
+                        self.hass,
                         host=host,
                         port=port,
                         user=user,
@@ -266,13 +265,13 @@ class ProxmoxOptionsFlowHandler(config_entries.OptionsFlow):
                         verify_ssl=verify_ssl,
                     )
 
-                    await self.hass.async_add_executor_job(cluster_client.build_client)
+                    await cluster_client.build_client()
 
-                except proxmoxer.AuthenticationError:
+                except ProxmoxAuthError:
                     errors[CONF_HA_ADMIN_USERNAME] = "auth_error"
-                except SSLError:
+                except SSL_ERRORS:
                     errors[CONF_BASE] = "ssl_rejection"
-                except ConnectTimeout:
+                except CONNECTION_ERRORS:
                     errors[CONF_BASE] = "cant_connect"
                 except Exception:  # pylint: disable=broad-except
                     errors[CONF_BASE] = "general_error"
@@ -344,6 +343,7 @@ class ProxmoxOptionsFlowHandler(config_entries.OptionsFlow):
 
             try:
                 self._proxmox_client = ProxmoxClient(
+                    self.hass,
                     host=host,
                     port=port,
                     user=user,
@@ -353,23 +353,19 @@ class ProxmoxOptionsFlowHandler(config_entries.OptionsFlow):
                     verify_ssl=verify_ssl,
                 )
 
-                await self.hass.async_add_executor_job(
-                    self._proxmox_client.build_client
-                )
-            except proxmoxer.backends.https.AuthenticationError:
+                await self._proxmox_client.build_client()
+            except ProxmoxAuthError:
                 return self.async_abort(reason="auth_error")
-            except SSLError:
+            except SSL_ERRORS:
                 return self.async_abort(reason="ssl_rejection")
-            except ConnectTimeout:
+            except CONNECTION_ERRORS:
                 return self.async_abort(reason="cant_connect")
             except Exception:  # pylint: disable=broad-except
                 return self.async_abort(reason="general_error")
 
             proxmox = self._proxmox_client.get_api_client()
 
-            resources = await self.hass.async_add_executor_job(
-                get_api, proxmox, "cluster/resources"
-            )
+            resources = await get_api(proxmox, "cluster/resources")
 
             resource_qemu = {}
             resource_lxc = {}
@@ -563,6 +559,7 @@ class ProxmoxOptionsFlowHandler(config_entries.OptionsFlow):
         data = self.config_entry.data
         try:
             self._proxmox_client = ProxmoxClient(
+                self.hass,
                 host=data[CONF_HOST],
                 port=data[CONF_PORT],
                 user=data[CONF_USERNAME],
@@ -571,19 +568,17 @@ class ProxmoxOptionsFlowHandler(config_entries.OptionsFlow):
                 password=data[CONF_PASSWORD],
                 verify_ssl=data[CONF_VERIFY_SSL],
             )
-            await self.hass.async_add_executor_job(self._proxmox_client.build_client)
-        except proxmoxer.backends.https.AuthenticationError:
+            await self._proxmox_client.build_client()
+        except ProxmoxAuthError:
             return self.async_abort(reason="auth_error")
-        except SSLError:
+        except SSL_ERRORS:
             return self.async_abort(reason="ssl_rejection")
-        except ConnectTimeout:
+        except CONNECTION_ERRORS:
             return self.async_abort(reason="cant_connect")
         except Exception:  # pylint: disable=broad-except
             return self.async_abort(reason="general_error")
         proxmox = self._proxmox_client.get_api_client()
-        resources = await self.hass.async_add_executor_job(
-            get_api, proxmox, "cluster/resources"
-        )
+        resources = await get_api(proxmox, "cluster/resources")
         return resources if isinstance(resources, list) else []
 
     async def async_remove_device(
@@ -788,6 +783,7 @@ class ProxmoxVEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         verify_ssl = import_config.get(CONF_VERIFY_SSL)
 
         proxmox_client = ProxmoxClient(
+            self.hass,
             host=host,
             port=port,
             user=user,
@@ -797,8 +793,8 @@ class ProxmoxVEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
         try:
-            await self.hass.async_add_executor_job(proxmox_client.build_client)
-        except proxmoxer.backends.https.AuthenticationError:
+            await proxmox_client.build_client()
+        except ProxmoxAuthError:
             errors[CONF_USERNAME] = "auth_error"
             ir.async_create_issue(
                 self.hass,
@@ -815,7 +811,7 @@ class ProxmoxVEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     "port": str(import_config.get(CONF_PORT)),
                 },
             )
-        except SSLError:
+        except SSL_ERRORS:
             errors[CONF_VERIFY_SSL] = "ssl_rejection"
             ir.async_create_issue(
                 self.hass,
@@ -832,7 +828,7 @@ class ProxmoxVEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     "port": str(import_config.get(CONF_PORT)),
                 },
             )
-        except ConnectTimeout:
+        except CONNECTION_ERRORS:
             errors[CONF_HOST] = "cant_connect"
             ir.async_create_issue(
                 self.hass,
@@ -872,9 +868,7 @@ class ProxmoxVEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         proxmox_nodes_host = []
         if proxmox := (proxmox_client.get_api_client()):
-            proxmox_nodes = await self.hass.async_add_executor_job(
-                get_api, proxmox, "nodes"
-            )
+            proxmox_nodes = await get_api(proxmox, "nodes")
 
             for node in proxmox_nodes if proxmox_nodes is not None else []:
                 proxmox_nodes_host.append(node[CONF_NODE])
@@ -959,6 +953,7 @@ class ProxmoxVEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             try:
                 self._proxmox_client = ProxmoxClient(
+                    self.hass,
                     host=host,
                     port=port,
                     user=user,
@@ -968,15 +963,13 @@ class ProxmoxVEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     verify_ssl=verify_ssl,
                 )
 
-                await self.hass.async_add_executor_job(
-                    self._proxmox_client.build_client
-                )
+                await self._proxmox_client.build_client()
 
-            except proxmoxer.backends.https.AuthenticationError:
+            except ProxmoxAuthError:
                 errors[CONF_USERNAME] = "auth_error"
-            except SSLError:
+            except SSL_ERRORS:
                 errors[CONF_BASE] = "ssl_rejection"
-            except ConnectTimeout:
+            except CONNECTION_ERRORS:
                 errors[CONF_BASE] = "cant_connect"
             except Exception:  # pylint: disable=broad-except
                 errors[CONF_BASE] = "general_error"
@@ -1029,6 +1022,7 @@ class ProxmoxVEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             try:
                 self._proxmox_client = ProxmoxClient(
+                    self.hass,
                     host=host,
                     port=port,
                     user=user,
@@ -1038,15 +1032,13 @@ class ProxmoxVEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     verify_ssl=verify_ssl,
                 )
 
-                await self.hass.async_add_executor_job(
-                    self._proxmox_client.build_client
-                )
+                await self._proxmox_client.build_client()
 
-            except proxmoxer.AuthenticationError:
+            except ProxmoxAuthError:
                 errors[CONF_USERNAME] = "auth_error"
-            except SSLError:
+            except SSL_ERRORS:
                 errors[CONF_VERIFY_SSL] = "ssl_rejection"
-            except ConnectTimeout:
+            except CONNECTION_ERRORS:
                 errors[CONF_HOST] = "cant_connect"
             except Exception:  # pylint: disable=broad-except
                 errors[CONF_BASE] = "general_error"
@@ -1123,6 +1115,7 @@ class ProxmoxVEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if not errors:
                 try:
                     self._proxmox_client = ProxmoxClient(
+                        self.hass,
                         host=host,
                         port=port,
                         user=username,
@@ -1132,15 +1125,13 @@ class ProxmoxVEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         verify_ssl=verify_ssl,
                     )
 
-                    await self.hass.async_add_executor_job(
-                        self._proxmox_client.build_client
-                    )
+                    await self._proxmox_client.build_client()
 
-                except proxmoxer.backends.https.AuthenticationError:
+                except ProxmoxAuthError:
                     errors[CONF_USERNAME] = "auth_error"
-                except SSLError:
+                except SSL_ERRORS:
                     errors[CONF_VERIFY_SSL] = "ssl_rejection"
-                except ConnectTimeout:
+                except CONNECTION_ERRORS:
                     errors[CONF_HOST] = "cant_connect"
                 except Exception:  # pylint: disable=broad-except
                     errors[CONF_BASE] = "general_error"
@@ -1229,9 +1220,7 @@ class ProxmoxVEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if (proxmox_cliente := self._proxmox_client) is not None:
                 proxmox = proxmox_cliente.get_api_client()
 
-            resources = await self.hass.async_add_executor_job(
-                get_api, proxmox, "cluster/resources"
-            )
+            resources = await get_api(proxmox, "cluster/resources")
             if resources is None:
                 return self.async_abort(reason="no_resources")
             self._expose_schema = self._build_expose_schema(resources)

@@ -8,13 +8,13 @@ import dataclasses
 import datetime
 from typing import TYPE_CHECKING, Any
 
+from aioproxmox.exceptions import ProxmoxAPIError
 from attr import Attribute, asdict
 from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.typing import UNDEFINED
-from proxmoxer.core import ResourceException
 
 from .api import get_api
 from .const import (
@@ -52,9 +52,9 @@ def _exclude_registry_cache(attribute: Attribute, _value: Any) -> bool:
     return attribute.name != "_cache"
 
 
-def _error_info(error: ResourceException) -> dict[str, str]:
-    """Turn a ResourceException into a JSON-serializable error dict."""
-    if error.status_code == 403:
+def _error_info(error: ProxmoxAPIError) -> dict[str, str]:
+    """Turn an API error into a JSON-serializable error dict."""
+    if error.status == 403:
         return {"error": "403 Forbidden: Permission check failed"}
     return {"error": str(error)}
 
@@ -69,17 +69,15 @@ async def async_get_api_data_diagnostics(
 
     resources: dict[str, Any] = {}
     try:
-        resources = await hass.async_add_executor_job(
-            get_api, proxmox, "cluster/resources"
-        )
-    except ResourceException as error:
+        resources = await get_api(proxmox, "cluster/resources")
+    except ProxmoxAPIError as error:
         resources = _error_info(error)
 
     nodes: dict[str, Any] = {}
     nodes_api = None
     try:
-        nodes_api = await hass.async_add_executor_job(get_api, proxmox, "nodes")
-    except ResourceException as error:
+        nodes_api = await get_api(proxmox, "nodes")
+    except ProxmoxAPIError as error:
         nodes["error"] = _error_info(error)["error"]
 
     for node in nodes_api if nodes_api is not None else []:
@@ -87,91 +85,78 @@ async def async_get_api_data_diagnostics(
 
         try:
             nodes[node["node"]]["qemu"] = {}
-            qemu_node = await hass.async_add_executor_job(
-                get_api, proxmox, f"nodes/{node['node']}/qemu"
-            )
+            qemu_node = await get_api(proxmox, f"nodes/{node['node']}/qemu")
             for qemu in qemu_node if qemu_node is not None else []:
                 nodes[node["node"]]["qemu"][qemu["vmid"]] = qemu
                 try:
                     nodes[node["node"]]["qemu"][qemu["vmid"]][
                         "backups"
-                    ] = await hass.async_add_executor_job(
-                        get_api,
-                        proxmox,
-                        f"nodes/{node['node']}/qemu/{qemu['vmid']}/snapshot",
+                    ] = await get_api(
+                        proxmox, f"nodes/{node['node']}/qemu/{qemu['vmid']}/snapshot"
                     )
-                except ResourceException as error:
+                except ProxmoxAPIError as error:
                     nodes[node["node"]]["qemu"][qemu["vmid"]]["backups"] = _error_info(
                         error
                     )
-        except ResourceException as error:
+        except ProxmoxAPIError as error:
             nodes[node["node"]]["qemu"] = _error_info(error)
 
         try:
             nodes[node["node"]]["lxc"] = {}
-            lxc_node = await hass.async_add_executor_job(
-                get_api, proxmox, f"nodes/{node['node']}/lxc"
-            )
+            lxc_node = await get_api(proxmox, f"nodes/{node['node']}/lxc")
             for lxc in lxc_node if lxc_node is not None else []:
                 nodes[node["node"]]["lxc"][lxc["vmid"]] = lxc
                 try:
-                    nodes[node["node"]]["lxc"][lxc["vmid"]][
-                        "backups"
-                    ] = await hass.async_add_executor_job(
-                        get_api,
-                        proxmox,
-                        f"nodes/{node['node']}/lxc/{lxc['vmid']}/snapshot",
+                    nodes[node["node"]]["lxc"][lxc["vmid"]]["backups"] = await get_api(
+                        proxmox, f"nodes/{node['node']}/lxc/{lxc['vmid']}/snapshot"
                     )
-                except ResourceException as error:
+                except ProxmoxAPIError as error:
                     nodes[node["node"]]["lxc"][lxc["vmid"]]["backups"] = _error_info(
                         error
                     )
-        except ResourceException as error:
+        except ProxmoxAPIError as error:
             nodes[node["node"]]["lxc"] = _error_info(error)
 
         try:
-            nodes[node["node"]]["storage"] = await hass.async_add_executor_job(
-                get_api, proxmox, f"nodes/{node['node']}/storage"
+            nodes[node["node"]]["storage"] = await get_api(
+                proxmox, f"nodes/{node['node']}/storage"
             )
-        except ResourceException as error:
+        except ProxmoxAPIError as error:
             nodes[node["node"]]["storage"] = _error_info(error)
 
         try:
-            nodes[node["node"]]["zfs"] = await hass.async_add_executor_job(
-                get_api, proxmox, f"nodes/{node['node']}/disks/zfs"
+            nodes[node["node"]]["zfs"] = await get_api(
+                proxmox, f"nodes/{node['node']}/disks/zfs"
             )
-        except ResourceException as error:
+        except ProxmoxAPIError as error:
             nodes[node["node"]]["zfs"] = _error_info(error)
 
         try:
-            nodes[node["node"]]["updates"] = await hass.async_add_executor_job(
-                get_api, proxmox, f"nodes/{node['node']}/apt/update"
+            nodes[node["node"]]["updates"] = await get_api(
+                proxmox, f"nodes/{node['node']}/apt/update"
             )
-        except ResourceException as error:
+        except ProxmoxAPIError as error:
             nodes[node["node"]]["updates"] = _error_info(error)
 
         try:
-            nodes[node["node"]]["versions"] = await hass.async_add_executor_job(
-                get_api, proxmox, f"nodes/{node['node']}/apt/versions"
+            nodes[node["node"]]["versions"] = await get_api(
+                proxmox, f"nodes/{node['node']}/apt/versions"
             )
-        except ResourceException as error:
+        except ProxmoxAPIError as error:
             nodes[node["node"]]["versions"] = _error_info(error)
 
         nodes[node["node"]]["disks"] = {}
         if config_entry.options.get(CONF_DISKS_ENABLE, True):
             try:
-                disks = await hass.async_add_executor_job(
-                    get_api, proxmox, f"nodes/{node['node']}/disks/list"
-                )
+                disks = await get_api(proxmox, f"nodes/{node['node']}/disks/list")
 
                 for disk in disks if disks is not None else []:
                     try:
-                        disk_attributes = await hass.async_add_executor_job(
-                            get_api,
+                        disk_attributes = await get_api(
                             proxmox,
                             f"nodes/{node['node']}/disks/smart/?disk={disk['devpath']}",
                         )
-                    except ResourceException:
+                    except ProxmoxAPIError:
                         disk_attributes = None
 
                     nodes[node["node"]]["disks"][disk["devpath"]] = {
@@ -179,7 +164,7 @@ async def async_get_api_data_diagnostics(
                         "smart": disk_attributes,
                     }
 
-            except ResourceException as error:
+            except ProxmoxAPIError as error:
                 nodes[node["node"]]["disks"] = _error_info(error)
         else:
             nodes[node["node"]]["disks"]["info"] = (

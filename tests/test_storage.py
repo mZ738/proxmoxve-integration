@@ -3,7 +3,7 @@
 """Tests for a storage's active, enabled and shared flags."""
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 from homeassistant.const import EntityCategory
 from homeassistant.helpers.typing import UNDEFINED
@@ -61,9 +61,6 @@ def _coordinator(responses: dict[str, object]) -> ProxmoxStorageCoordinator:
     """
     coordinator = object.__new__(ProxmoxStorageCoordinator)
     coordinator.hass = MagicMock()
-    coordinator.hass.async_add_executor_job = AsyncMock(
-        side_effect=lambda func, *args: func(*args)
-    )
     # The shared resource read keeps its cache in hass.data, per entry.
     coordinator.hass.data = {}
     coordinator.config_entry = MagicMock()

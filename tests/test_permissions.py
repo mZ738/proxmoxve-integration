@@ -2,10 +2,9 @@
 # SPDX-License-Identifier: MIT
 """Tests for leaving out buttons the credentials could never use."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.core import HomeAssistant
-from proxmoxer.core import ResourceException
 
 from custom_components.proxmoxve.button import (
     PROXMOX_BUTTON_CLUSTER,
@@ -20,6 +19,8 @@ from custom_components.proxmoxve.permissions import (
     is_granted,
     is_granted_anywhere_below,
 )
+
+from .fake_api import api_error
 
 # Shaped like `GET /access/permissions` for a token that may audit the whole
 # cluster, control VM 100 and snapshot VM 101, and power-manage node pve1.
@@ -129,16 +130,16 @@ def test_every_button_names_its_privilege() -> None:
 async def test_fetch_permissions_reads_the_mapping(hass: HomeAssistant) -> None:
     """Test the API's answer is kept as path -> privilege -> 0/1."""
     proxmox = MagicMock()
-    proxmox.get.return_value = PERMISSIONS
+    proxmox.request = AsyncMock(return_value=PERMISSIONS)
 
     assert await async_fetch_permissions(hass, proxmox) == PERMISSIONS
-    proxmox.get.assert_called_once_with("access/permissions")
+    proxmox.request.assert_awaited_once_with("GET", "access/permissions")
 
 
 async def test_fetch_permissions_when_the_call_fails(hass: HomeAssistant) -> None:
     """Test a failed call yields None rather than an empty mapping - which would gate everything."""
     proxmox = MagicMock()
-    proxmox.get.side_effect = ResourceException(500, "boom", "no")
+    proxmox.request = AsyncMock(side_effect=api_error(500, "boom", "no"))
 
     assert await async_fetch_permissions(hass, proxmox) is None
 
@@ -148,7 +149,7 @@ async def test_fetch_permissions_with_an_unexpected_answer(
 ) -> None:
     """Test something that is not a mapping is treated as unknown."""
     proxmox = MagicMock()
-    proxmox.get.return_value = [{"vmid": 100}]
+    proxmox.request = AsyncMock(return_value=[{"vmid": 100}])
 
     with patch("custom_components.proxmoxve.permissions.LOGGER"):
         assert await async_fetch_permissions(hass, proxmox) is None
