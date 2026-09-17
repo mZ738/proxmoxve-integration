@@ -69,8 +69,15 @@ def build_verifying_context(ca_bundle: str = "") -> ssl.SSLContext:
     Additional CA integration fills. That store is added here, and on top
     of it the bundle named in the configuration, if any. Nothing is taken
     away from the public list. Reads files, so it belongs in the executor.
+
+    The root CA Proxmox generates for a cluster carries no keyUsage
+    extension, and Python 3.13 turned on VERIFY_X509_STRICT, whose RFC
+    5280 profile checks refuse exactly that - so the cluster's own CA was
+    rejected however it was made known. Strict mode is switched off for
+    this context only; the chain and the hostname are still verified.
     """
     context = create_client_context()
+    context.verify_flags &= ~ssl.VERIFY_X509_STRICT
     with suppress(ssl.SSLError, OSError):
         context.load_default_certs()
     if ca_bundle:
@@ -197,10 +204,14 @@ class ProxmoxClient:
         """
         verify_ssl: bool | ssl.SSLContext = bool(self._verify_ssl)
         session = async_get_clientsession(self._hass, verify_ssl=bool(verify_ssl))
-        if verify_ssl:
-            verify_ssl = await self._hass.async_add_executor_job(
+        if verify_ssl or self._ca_bundle:
+            # A bundle is read even when it will not be used, so a wrong
+            # path is caught on the form whichever way the switch stands.
+            context = await self._hass.async_add_executor_job(
                 build_verifying_context, self._ca_bundle
             )
+            if verify_ssl:
+                verify_ssl = context
         user_id = self._user_id()
 
         if token_name := token_name_only(self._token_name):

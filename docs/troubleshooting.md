@@ -29,6 +29,8 @@ Proxmox signs every node's certificate with the cluster's own CA, which no publi
 2. Put the same file somewhere Home Assistant can read it, for example `/config/pve-root-ca.pem`, and enter that path as **CA bundle for a private CA** on the host form (also in the options under *Change host authentication information*). The file is read when the integration starts; a path that cannot be read stops setup with a message rather than retrying.
 3. Turn **Verify SSL certificate** off. The connection is still encrypted, but the node's identity is not checked.
 
+The CA Proxmox generates at install time carries no keyUsage extension, which Python's strict certificate checks (on by default since 3.13) refuse regardless of trust. The integration turns those profile checks off for its own connections; the chain and the hostname are still verified.
+
 With a fallback to another cluster node (see [Behaviour](behaviour.md)), that node's certificate has to be valid for the address it is reached on as well.
 
 ## Diagnostics
