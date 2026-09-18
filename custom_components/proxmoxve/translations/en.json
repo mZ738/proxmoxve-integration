@@ -120,11 +120,11 @@
         "title": "{count} resource(s) not readable by `{user}`"
       },
       "guest_agent_fsinfo_forbidden": {
-        "description": "User `{user}` may not query the QEMU guest agent of these VMs: {vms}.\n\nTheir disk usage falls back to what the host sees - for most VMs that is nothing - and their IP addresses stay unknown. Reading them needs, on the VMs or on a path above them:\n* `{permission}`\n\nOn Proxmox VE 8 the privilege is `VM.Monitor` instead. The built-in `PVEAuditor` role carries it. Grant it and reload the integration.",
+        "description": "User `{user}` may not query the QEMU guest agent of these VMs: {vms}.\n\nTheir disk usage falls back to what the host sees - for most VMs that is nothing - and their IP addresses stay unknown. Reading them needs, on the VMs or on a path above them, either of:\n* `{permission}`\n\nOn Proxmox VE 8 the privilege is `VM.Monitor` instead. The built-in `PVEAuditor` role carries it. Grant it and reload the integration.",
         "title": "Guest agent not readable"
       },
       "guest_agent_file_forbidden": {
-        "description": "User `{user}` may not read files through the QEMU guest agent of these VMs: {vms}.\n\nTheir guest file sensor cannot be created. Reading it needs, on the VMs or on a path above them:\n* `{permission}`\n\nOn Proxmox VE 8 the privilege is `VM.Monitor` instead. Grant it and reload the integration, or clear the file path in the integration options.",
+        "description": "User `{user}` may not read files through the QEMU guest agent of these VMs: {vms}.\n\nTheir guest file sensor cannot be created. Reading it needs, on the VMs or on a path above them, either of:\n* `{permission}`\n\nOn Proxmox VE 8 the privilege is `VM.Monitor` instead. Grant it and reload the integration, or clear the file path in the integration options.",
         "title": "Guest file not readable"
       },
       "resource_command_forbiden": {
