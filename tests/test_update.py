@@ -310,15 +310,21 @@ def test_a_debian_version_is_not_read_as_markdown() -> None:
     assert r"Clients provided with BIND 9 \*and\* \_more\_" in notes
 
 
-def test_a_package_without_a_previous_version_shows_the_new_one() -> None:
-    """Test a package apt reports without OldVersion is listed all the same."""
+def test_a_package_apt_would_install_says_it_is_new() -> None:
+    """
+    Test a package with no previous version is not shown as half a line.
+
+    A new kernel brings its own versioned package names along, so apt
+    reports them without an `OldVersion` - and `proxmox-headers-7.0.14-17-pve
+    - 7.0.14-17` read like the rest of the line had gone missing.
+    """
     pending = [{key: value for key, value in PENDING[1].items() if key != "OldVersion"}]
     notes = _entity(parse_updates(pending, "pve")).release_notes()
 
     assert notes is not None
     assert (
-        "- Proxmox Virtual Environment Management Tools (`pve-manager`) — `9.0.10`"
-        in notes
+        "- Proxmox Virtual Environment Management Tools (`pve-manager`) "
+        "— new: `9.0.10`" in notes
     )
 
 

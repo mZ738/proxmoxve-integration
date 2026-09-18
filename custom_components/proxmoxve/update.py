@@ -143,12 +143,17 @@ def _package_line(entry: dict[str, str | bool]) -> str:
 
     The versions go in code spans - a tilde is literal in there, and a
     version reads as the machine word it is.
+
+    A package apt would install rather than upgrade has no version to
+    come from - a new kernel brings its own versioned package names with
+    it - and is said to be new, rather than shown as a single version
+    that reads like the rest of the line went missing.
     """
     title = _as_text(str(entry["title"]))
     package = str(entry["package"])
     version = str(entry["version"])
     old = str(entry.get("old", ""))
-    change = f"`{old}` \u2192 `{version}`" if old else f"`{version}`"
+    change = f"`{old}` \u2192 `{version}`" if old else f"new: `{version}`"
     return f"- {title} (`{package}`) \u2014 {change}"
 
 
