@@ -125,6 +125,7 @@ from .permissions import (
     is_granted,
 )
 from .services import async_register_services
+from .stagger import async_stagger_polling
 from .storage import (
     STORAGE_PREFIX,
     is_shared_storage_id,
@@ -1284,6 +1285,15 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
         )
 
     await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
+
+    # Every coordinator got its schedule in the same second; spread them out
+    # so the minute's burst is a few small steps instead of one stall.
+    async_stagger_polling(
+        hass,
+        config_entry,
+        coordinators,
+        skip=frozenset({f"{ProxmoxType.Proxmox}_discovery"}),
+    )
 
     return True
 
