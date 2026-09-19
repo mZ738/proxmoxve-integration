@@ -3,7 +3,7 @@
 """Tests for a storage's flags, and for the ZFS pool coordinator."""
 
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant.const import EntityCategory
@@ -188,30 +188,29 @@ POOLS = [
 ]
 
 
-def _zfs_coordinator(answer: object) -> ProxmoxZFSCoordinator:
+def _zfs_coordinator() -> ProxmoxZFSCoordinator:
     """
-    Build a ZFS coordinator whose one read returns `answer`.
+    Build a ZFS coordinator for one pool on one node.
 
     Constructing the real thing would need a config entry and an event
-    loop; the update method only touches these attributes.
+    loop; the update method only touches these attributes. What the read
+    answers is decided per test, by patching the poll itself.
     """
     coordinator = object.__new__(ProxmoxZFSCoordinator)
     coordinator.hass = MagicMock()
-    coordinator.hass.async_add_executor_job = _returning(answer)
     coordinator.config_entry = MagicMock()
     coordinator.node_name = "pve"
     coordinator.resource_id = "rpool"
-    coordinator._proxmox = MagicMock()  # noqa: SLF001
+    coordinator.proxmox = MagicMock()
     return coordinator
 
 
-def _returning(answer: object):  # noqa: ANN202 - a stand-in for the executor
-    """Return an executor stand-in that answers with `answer`."""
-
-    async def _run(*_args: object, **_kwargs: object) -> object:
-        return answer
-
-    return _run
+def _zfs_answer(answer: object) -> AsyncMock:
+    """Patch the pool read to answer with `answer`."""
+    return patch(
+        "custom_components.proxmoxve.coordinator.poll_api",
+        new=AsyncMock(return_value=answer),
+    )
 
 
 async def test_a_refused_pool_read_fails_the_update() -> None:
@@ -221,9 +220,9 @@ async def test_a_refused_pool_read_fails_the_update() -> None:
     `poll_api` hands back nothing for a 403 - it files the repair instead -
     and iterating that raised `TypeError: 'NoneType' object is not iterable`.
     """
-    coordinator = _zfs_coordinator(None)
+    coordinator = _zfs_coordinator()
 
-    with pytest.raises(UpdateFailed, match="not available"):
+    with _zfs_answer(None), pytest.raises(UpdateFailed, match="not available"):
         await coordinator._async_update_data()  # noqa: SLF001
 
 
@@ -234,25 +233,29 @@ async def test_a_pool_that_is_gone_fails_the_update() -> None:
     It was written against `pool_status is None` while the variable started
     as `[]`, so it never ran and `.get` was called on a list instead.
     """
-    coordinator = _zfs_coordinator([{"name": "hddpool"}])
+    coordinator = _zfs_coordinator()
 
-    with pytest.raises(UpdateFailed, match="unable to be found"):
+    with (
+        _zfs_answer([{"name": "hddpool"}]),
+        pytest.raises(UpdateFailed, match="unable to be found"),
+    ):
         await coordinator._async_update_data()  # noqa: SLF001
 
 
 async def test_an_answer_that_is_not_a_listing_fails_the_update() -> None:
     """Test anything but pools is reported, rather than iterated into pieces."""
-    coordinator = _zfs_coordinator({"name": "rpool"})
+    coordinator = _zfs_coordinator()
 
-    with pytest.raises(UpdateFailed):
+    with _zfs_answer({"name": "rpool"}), pytest.raises(UpdateFailed):
         await coordinator._async_update_data()  # noqa: SLF001
 
 
 async def test_the_pool_is_read_as_before() -> None:
     """Test the working case is untouched: the named pool's figures."""
-    coordinator = _zfs_coordinator(POOLS)
+    coordinator = _zfs_coordinator()
 
-    data = await coordinator._async_update_data()  # noqa: SLF001
+    with _zfs_answer(POOLS):
+        data = await coordinator._async_update_data()  # noqa: SLF001
 
     assert data.name == "ZFS Pool rpool"
     assert data.health == "ONLINE"
@@ -261,8 +264,9 @@ async def test_the_pool_is_read_as_before() -> None:
 
 async def test_an_entry_without_a_name_is_skipped() -> None:
     """Test a listing entry the API hands back without a name does not raise."""
-    coordinator = _zfs_coordinator([{"health": "ONLINE"}, *POOLS])
+    coordinator = _zfs_coordinator()
 
-    data = await coordinator._async_update_data()  # noqa: SLF001
+    with _zfs_answer([{"health": "ONLINE"}, *POOLS]):
+        data = await coordinator._async_update_data()  # noqa: SLF001
 
     assert data.health == "ONLINE"
