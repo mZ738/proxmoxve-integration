@@ -9,7 +9,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.proxmoxve import DOMAIN, device_info
 from custom_components.proxmoxve.const import COORDINATORS, ProxmoxType
 
-from .fake_api import FakeProxmox
+from .fake_api import NODE, FakeProxmox
 
 
 async def _setup(
@@ -91,3 +91,52 @@ async def test_a_refresh_does_not_invent_a_guest_device(
     await hass.async_block_till_done()
 
     assert dev_reg.async_get_device_by_identifier(identifier, entry.entry_id) is None
+
+
+async def test_a_guest_renamed_in_proxmox_is_renamed_here(
+    hass: HomeAssistant, fake_api: FakeProxmox, current_entry: MockConfigEntry
+) -> None:
+    """
+    Test the device follows a rename, instead of keeping the old name.
+
+    A guest renamed in Proxmox keeps its id, so it stays the same device -
+    and the name was only ever written when the device was created, which
+    left a container created and then named showing its id forever.
+    """
+    entry = await _setup(hass, fake_api, current_entry)
+    dev_reg = dr.async_get(hass)
+    identifier = (DOMAIN, f"{entry.entry_id}_{ProxmoxType.LXC.upper()}_100")
+    device = dev_reg.async_get_device_by_identifier(identifier, entry.entry_id)
+    assert device is not None
+    assert device.name == "LXC lxc-test-100 (100)"
+
+    fake_api.routes[f"nodes/{NODE}/lxc/100/status/current"]["name"] = "qv-test"
+    coordinator = entry.runtime_data[COORDINATORS][f"{ProxmoxType.LXC}_100"]
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    device = dev_reg.async_get_device_by_identifier(identifier, entry.entry_id)
+    assert device is not None
+    assert device.name == "LXC qv-test (100)"
+
+
+async def test_a_name_given_here_survives_a_rename(
+    hass: HomeAssistant, fake_api: FakeProxmox, current_entry: MockConfigEntry
+) -> None:
+    """Test a name set in Home Assistant is what is shown, rename or not."""
+    entry = await _setup(hass, fake_api, current_entry)
+    dev_reg = dr.async_get(hass)
+    identifier = (DOMAIN, f"{entry.entry_id}_{ProxmoxType.QEMU.upper()}_101")
+    device = dev_reg.async_get_device_by_identifier(identifier, entry.entry_id)
+    assert device is not None
+    dev_reg.async_update_device(device.id, name_by_user="The one in the cellar")
+
+    fake_api.routes[f"nodes/{NODE}/qemu/101/status/current"]["name"] = "vm-renamed"
+    coordinator = entry.runtime_data[COORDINATORS][f"{ProxmoxType.QEMU}_101"]
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    device = dev_reg.async_get_device_by_identifier(identifier, entry.entry_id)
+    assert device is not None
+    assert device.name_by_user == "The one in the cellar"
+    assert device.name == "QEMU vm-renamed (101)"
