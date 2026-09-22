@@ -4,6 +4,7 @@
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.proxmoxve import DOMAIN, device_info
@@ -140,3 +141,38 @@ async def test_a_name_given_here_survives_a_rename(
     assert device is not None
     assert device.name_by_user == "The one in the cellar"
     assert device.name == "QEMU vm-renamed (101)"
+
+
+async def test_a_rename_leaves_the_entity_ids_alone(
+    hass: HomeAssistant, fake_api: FakeProxmox, current_entry: MockConfigEntry
+) -> None:
+    """
+    Test the entities are renamed, not re-registered.
+
+    An entity id is the one thing automations, dashboards and history refer
+    to, so it is never rewritten - not by the entity id scheme, and not
+    here. What follows is the displayed name, which Home Assistant composes
+    from the device's.
+    """
+    entry = await _setup(hass, fake_api, current_entry)
+    ent_reg = er.async_get(hass)
+    entity_id = "sensor.lxc_lxc_test_100_100_cpu_used"
+    before = sorted(
+        entity.entity_id
+        for entity in er.async_entries_for_config_entry(ent_reg, entry.entry_id)
+    )
+    assert entity_id in before
+
+    fake_api.routes[f"nodes/{NODE}/lxc/100/status/current"]["name"] = "qv-test"
+    coordinator = entry.runtime_data[COORDINATORS][f"{ProxmoxType.LXC}_100"]
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    after = sorted(
+        entity.entity_id
+        for entity in er.async_entries_for_config_entry(ent_reg, entry.entry_id)
+    )
+    assert after == before
+    state = hass.states.get(entity_id)
+    assert state is not None
+    assert state.attributes["friendly_name"] == "LXC qv-test (100) CPU used"
