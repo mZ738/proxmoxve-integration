@@ -157,6 +157,7 @@ class ProxmoxClient:
         realm: str | None = DEFAULT_REALM,
         verify_ssl: bool | None = DEFAULT_VERIFY_SSL,
         ca_bundle: str | None = "",
+        fallback_hosts: Iterable[str] = (),
     ) -> None:
         """Initialize the ProxmoxClient."""
         self._hass = hass
@@ -168,6 +169,12 @@ class ProxmoxClient:
         self._password = password
         self._verify_ssl = verify_ssl
         self._ca_bundle = (ca_bundle or "").strip()
+        # What the cluster said the last time it could be asked. Without
+        # them the first request of a setup can only go to the configured
+        # host, and an entry whose host is down would never load again.
+        self._fallback_hosts = [
+            host for host in fallback_hosts if isinstance(host, str) and host
+        ]
 
     @property
     def host(self) -> str:
@@ -183,7 +190,7 @@ class ProxmoxClient:
         try:
             return self._proxmox.hosts
         except AttributeError:
-            return (self._host,)
+            return (self._host, *self._fallback_hosts)
 
     @property
     def uses_token(self) -> bool:
@@ -201,6 +208,11 @@ class ProxmoxClient:
         errors for a host that is not there, ProxmoxAPIError for anything
         else the API answered, and CABundleError for a bundle path that
         cannot be read.
+
+        Where the cluster's other nodes are known from an earlier setup,
+        a configured host that does not answer at all is left for one of
+        them right here: the login is what a restart runs into first, and
+        without this the entry could not load while that node is down.
         """
         verify_ssl: bool | ssl.SSLContext = bool(self._verify_ssl)
         session = async_get_clientsession(self._hass, verify_ssl=bool(verify_ssl))
@@ -225,7 +237,10 @@ class ProxmoxClient:
                 verify_ssl=verify_ssl,
                 timeout=API_TIMEOUT,
             )
+            proxmox.learn_hosts(list(self._fallback_hosts))
             try:
+                # `request` moves to another node itself when the current
+                # one does not answer and others are known.
                 await proxmox.request("GET", "version")
             except ProxmoxAPIError as error:
                 if error.status == 401:
@@ -242,7 +257,17 @@ class ProxmoxClient:
                 verify_ssl=verify_ssl,
                 timeout=API_TIMEOUT,
             )
-            await proxmox.auth.async_init()  # type: ignore[attr-defined]
+            proxmox.learn_hosts(list(self._fallback_hosts))
+            try:
+                await proxmox.auth.async_init()  # type: ignore[attr-defined]
+            except CONNECTION_ERRORS:
+                # The login goes straight out, with no failover of its
+                # own. A node that answers `version` is one to log in to;
+                # that the credentials are then refused is the login's
+                # answer, and the same answer on every node.
+                if not await proxmox.failover():
+                    raise
+                await proxmox.auth.async_init()  # type: ignore[attr-defined]
 
         self._proxmox = proxmox
 
