@@ -48,6 +48,7 @@ from .api import (
 from .const import (
     CONF_AUTO_DISCOVERY,
     CONF_CA_BUNDLE,
+    CONF_CLUSTER_HOSTS,
     CONF_CONTAINERS,
     CONF_DISKS_ENABLE,
     CONF_HA_ADMIN_PASSWORD,
@@ -841,7 +842,10 @@ async def _async_drop_coordinators(
 
 
 async def _learn_cluster_hosts(
-    hass: HomeAssistant, client: ProxmoxClient, proxmox: ProxmoxVE
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    client: ProxmoxClient,
+    proxmox: ProxmoxVE,
 ) -> str | None:
     """
     Tell the client what the other nodes of the cluster answer on.
@@ -868,8 +872,30 @@ async def _learn_cluster_hosts(
     client.learn_hosts([entry["ip"] for entry in nodes if entry.get("ip")])
     if len(client.hosts) > 1:
         LOGGER.debug("Fallback hosts for %s: %s", client.host, client.hosts[1:])
+    _remember_cluster_hosts(hass, config_entry, client)
     local = next((entry for entry in nodes if entry.get("local")), None)
     return str(local["name"]) if local and local.get("name") else None
+
+
+def _remember_cluster_hosts(
+    hass: HomeAssistant, config_entry: ConfigEntry, client: ProxmoxClient
+) -> None:
+    """
+    Keep the cluster's other addresses in the entry, for the next start.
+
+    They are read from `cluster/status`, which needs a host that answers -
+    so at the start of a setup, while the configured host is down, the only
+    addresses there are are the ones from the last time it was up. Written
+    only when they changed, and never emptied by a read that did not
+    happen: a single node, or credentials without Sys.Audit on `/`, returns
+    before this.
+    """
+    fallbacks = [host for host in client.hosts if host != config_entry.data[CONF_HOST]]
+    if list(config_entry.data.get(CONF_CLUSTER_HOSTS, [])) == fallbacks:
+        return
+    hass.config_entries.async_update_entry(
+        config_entry, data={**config_entry.data, CONF_CLUSTER_HOSTS: fallbacks}
+    )
 
 
 def async_merge_shared_storages(
@@ -964,6 +990,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
         password=password,
         verify_ssl=verify_ssl,
         ca_bundle=ca_bundle,
+        fallback_hosts=entry_data.get(CONF_CLUSTER_HOSTS, []),
     )
     try:
         await proxmox_client.build_client()
@@ -994,7 +1021,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
         raise ConfigEntryNotReady from error
 
     proxmox = proxmox_client.get_api_client()
-    local_node = await _learn_cluster_hosts(hass, proxmox_client, proxmox)
+    local_node = await _learn_cluster_hosts(hass, config_entry, proxmox_client, proxmox)
 
     coordinators: dict[
         str,
