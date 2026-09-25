@@ -584,15 +584,21 @@ class FakeProxmox:
         # Raised on the next POST, for tests of a refused command.
         self.post_error: Exception | None = None
 
-    async def request(
+    async def request(  # noqa: PLR0917 - the library's own signature
         self,
         proxmox: ProxmoxVE,
         method: str,
         path: str,
         json_data: dict | None = None,
         params: dict | None = None,
+        timeout: float | None = None,  # noqa: ASYNC109 - the library's own
     ) -> Any:
-        """Answer one request the way the real API would, or refuse it."""
+        """
+        Answer one request the way the real API would, or refuse it.
+
+        `timeout` is what the library passes for the short probes that ask
+        a host whether it is there; the fake answers either way.
+        """
         host = proxmox.host
         self.hosts_seen.append(host)
         if host in self.dead_hosts:

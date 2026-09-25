@@ -981,6 +981,8 @@ class SharedResources:
         self._read_at: float = -RESOURCES_TTL
         self._rows: list[dict[str, Any]] | None = None
         self._failure: str | None = None
+        # The nodes the cluster last reported as anything but online.
+        self.nodes_off: frozenset[str] = frozenset()
 
     async def get(
         self,
@@ -1015,6 +1017,7 @@ class SharedResources:
                     self._failure = (
                         None if isinstance(rows, list) or rows is None else ""
                     )
+                    self.nodes_off = nodes_not_online(self._rows)
                 self._read_at = time.monotonic()
         if self._failure is not None:
             raise UpdateFailed(self._failure or "Cluster resources are not available")
@@ -1025,6 +1028,22 @@ class SharedResources:
     def forget(self) -> None:
         """Make the next caller read again - after something changed the cluster."""
         self._read_at = -RESOURCES_TTL
+
+
+def nodes_not_online(rows: list[dict[str, Any]] | None) -> frozenset[str]:
+    """
+    Return the nodes `cluster/resources` lists as anything but online.
+
+    A node with no status at all is not counted: unknown is not off, and
+    refusing to read from it would be worse than trying.
+    """
+    return frozenset(
+        str(row.get(CONF_NODE))
+        for row in rows or []
+        if row.get("type") == "node"
+        and row.get(CONF_NODE)
+        and str(row.get("status", "")) not in ("", "online")
+    )
 
 
 def shared_resources(hass: HomeAssistant, config_entry: ConfigEntry) -> SharedResources:
@@ -3033,6 +3052,18 @@ async def poll_api(  # noqa: PLR0917
             case _:
                 return "Unmapped"
 
+    # Everything goes to one host, which forwards what belongs to another
+    # node. With that node down, pveproxy waits and then answers 595 'No
+    # route to host' - once per guest, storage and node read, every poll,
+    # seconds at a time. And a dropped connection there looks like a host
+    # that went away, which used to send the client around the cluster.
+    # The cluster already said the node is off; take that answer.
+    if (node := node_of_path(None)) and node in shared_resources(
+        hass, config_entry
+    ).nodes_off:
+        msg = f"Node {node} is offline"
+        raise UpdateFailed(msg)
+
     try:
         api_data = await get_api(proxmox, api_path)
     except ProxmoxAuthError as error:
@@ -3076,7 +3107,7 @@ async def poll_api(  # noqa: PLR0917
                 f"Error get API path {api_path}: User not allowed to access the resource, check user permissions as per the documentation, see details in the repair created by the integration."
             )
             return None
-        raise UpdateFailed from error
+        raise UpdateFailed(str(error)) from error
     note_resource(
         hass, config_entry, FORBIDDEN, f"{api_category}_{resource_id}", listed=False
     )
