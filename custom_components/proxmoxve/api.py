@@ -217,9 +217,16 @@ class ProxmoxClient:
         The one read every credential may make, and one the host
         answers itself instead of forwarding it to another node - which
         is what makes it an answer about the host.
+
+        Any answer counts, a refusal included: a host that says 401 is a
+        host that is there, and a ticket that died while the host was away
+        is answered with exactly that. Only a connection that fails, or one
+        that never answers, means the host is gone.
         """
         try:
             self._proxmox.version.get()
+        except ResourceException as error:
+            LOGGER.debug("Host %s answered %s; it is there", self.host, error)
         except (AuthenticationError, RequestException) as error:
             LOGGER.debug("Host %s did not answer: %s", self.host, error)
             return False

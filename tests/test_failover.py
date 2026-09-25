@@ -8,6 +8,7 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
 from proxmoxer import AuthenticationError
+from proxmoxer.core import ResourceException
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from requests.exceptions import ConnectionError as RequestsConnectionError
 
@@ -312,3 +313,28 @@ async def test_a_node_the_cluster_calls_offline_is_not_asked_after(
     assert not coordinator.last_update_success
     assert "offline" in str(coordinator.last_exception)
     assert not [path for path in fake_api.paths() if path.startswith(f"nodes/{NODE}/")]
+
+
+def test_a_host_that_refuses_the_read_is_still_a_host() -> None:
+    """
+    Test a 401 from the host counts as "I am here", not as silence.
+
+    A ticket outlives a host that is away for more than two hours, and the
+    renewal is then refused like a wrong password. Asked whether it is
+    there, such a host answers 401 - which is an answer, and no reason to
+    go looking for another node. On the library line, where `version` is
+    read without a ticket at setup, taking this for silence left a reload
+    failing in a loop while three nodes were running.
+    """
+    client = _client()
+    client.learn_hosts(LEARNED)
+    refusing = MagicMock(name="the host that wants a ticket")
+    refusing.version.get.side_effect = ResourceException(
+        401, "authentication failure", "no ticket"
+    )
+    client._proxmox = refusing  # noqa: SLF001
+
+    with patch.object(client, "_build", side_effect=AssertionError("switched")):
+        assert client.failover(client.generation) is False
+
+    assert client.host == CONFIGURED
