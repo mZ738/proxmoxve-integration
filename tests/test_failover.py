@@ -21,7 +21,7 @@ from custom_components.proxmoxve.const import (
 )
 from custom_components.proxmoxve.coordinator import shared_resources
 
-from .fake_api import NODE, FakeProxmox, connection_refused
+from .fake_api import NODE, FakeProxmox, api_error, connection_refused
 
 CONFIGURED = "192.168.10.101"
 LEARNED = ("192.0.2.10", "192.0.2.11")
@@ -314,3 +314,32 @@ async def test_a_host_that_answers_is_kept(
     assert not node.last_update_success
     assert client.host == CONFIGURED
     assert client.hosts == (CONFIGURED, *LEARNED)
+
+
+async def test_a_start_where_the_other_nodes_want_a_ticket_first(
+    hass: HomeAssistant, fake_api: FakeProxmox, current_entry: MockConfigEntry
+) -> None:
+    """
+    Test a fallback node is used although it refuses the read that proves it.
+
+    `version` needs authentication, and a password client has no ticket
+    before it logs in - so every healthy node answers 401 while the
+    configured one is down. Taken for silence, that left the reload of a
+    live cluster failing with "connection is unreachable" for as long as
+    the node stayed off, with three nodes running.
+    """
+    hass.config_entries.async_update_entry(
+        current_entry,
+        data={**current_entry.data, CONF_CLUSTER_HOSTS: list(LEARNED)},
+    )
+    fake_api.dead_hosts.add(CONFIGURED)
+    fake_api.routes["version"] = api_error(
+        401, "authentication failure", "no ticket was sent"
+    )
+
+    await hass.config_entries.async_setup(current_entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert current_entry.state is ConfigEntryState.LOADED
+    client: ProxmoxClient = current_entry.runtime_data[PROXMOX_CLIENT]
+    assert client.host == LEARNED[0]
