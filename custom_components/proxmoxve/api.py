@@ -264,8 +264,12 @@ class ProxmoxClient:
                 # The login goes straight out, with no failover of its
                 # own. A node that answers `version` is one to log in to;
                 # that the credentials are then refused is the login's
-                # answer, and the same answer on every node.
-                if not await proxmox.failover():
+                # answer, and the same answer on every node. With no
+                # fallback known there is nothing to try, and asking the
+                # host again would only wait out a second timeout.
+                if len(proxmox.hosts) < 2 or not await proxmox.failover(
+                    verify_current=False
+                ):
                     raise
                 await proxmox.auth.async_init()  # type: ignore[attr-defined]
 

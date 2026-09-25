@@ -19,6 +19,7 @@ from custom_components.proxmoxve.const import (
     PROXMOX_CLIENT,
     ProxmoxType,
 )
+from custom_components.proxmoxve.coordinator import shared_resources
 
 from .fake_api import NODE, FakeProxmox, connection_refused
 
@@ -72,10 +73,12 @@ async def test_the_cluster_stays_in_home_assistant_when_the_host_goes(
 
     assert node.last_update_success
     assert client.host == "192.0.2.10"
-    # The dead host was tried once for this poll, then the fallback answered
-    # - that read and every one after it.
-    assert fake_api.hosts_seen[seen_before] == CONFIGURED
-    assert set(fake_api.hosts_seen[seen_before + 1 :]) == {"192.0.2.10"}
+    # The read, then the host asked whether it is really gone - a failed
+    # read alone is no proof, since a path may name a node that is down
+    # rather than the host itself. From there on, the fallback answers.
+    tried = fake_api.hosts_seen[seen_before:]
+    assert tried[:2] == [CONFIGURED, CONFIGURED]
+    assert set(tried[2:]) == {"192.0.2.10"}
 
 
 async def test_a_second_coordinator_finds_the_switch_done(
@@ -254,3 +257,60 @@ async def test_a_login_that_meets_a_dead_host_moves_on(
     assert client.host == LEARNED[0]
     assert CONFIGURED in logged_in[0]
     assert LEARNED[0] in logged_in[-1]
+
+
+async def test_a_node_the_cluster_calls_offline_is_not_asked_after(
+    hass: HomeAssistant, fake_api: FakeProxmox, current_entry: MockConfigEntry
+) -> None:
+    """
+    Test the reads for a node that is off are skipped, with a reason.
+
+    Everything goes to one host, which forwards what belongs to another
+    node. With that node down, pveproxy waits and then answers 595 "No
+    route to host" - once per guest, storage and node read, every poll,
+    seconds at a time. Worse, a connection it drops there looks exactly
+    like a host that went away, which is what sent the client around the
+    cluster on a live four-node test.
+    """
+    await hass.config_entries.async_setup(current_entry.entry_id)
+    await hass.async_block_till_done()
+    coordinator = current_entry.runtime_data[COORDINATORS][f"{ProxmoxType.LXC}_100"]
+
+    for row in fake_api.routes["cluster/resources"]:
+        if row.get("type") == "node" and row.get("node") == NODE:
+            row["status"] = "offline"
+    # The shared read is a few seconds old; in the real world the next
+    # burst reads again.
+    shared_resources(hass, current_entry).forget()
+    fake_api.calls.clear()
+    await coordinator.async_refresh()
+
+    assert not coordinator.last_update_success
+    assert "offline" in str(coordinator.last_exception)
+    assert not [path for path in fake_api.paths() if path.startswith(f"nodes/{NODE}/")]
+
+
+async def test_a_host_that_answers_is_kept(
+    hass: HomeAssistant, fake_api: FakeProxmox, current_entry: MockConfigEntry
+) -> None:
+    """
+    Test a failed read does not move a client whose host is fine.
+
+    The library asks the host `version` before switching. Without that, a
+    read that cannot be answered here - a guest on a node that is down -
+    read as "this host stopped answering", and every coordinator took the
+    client one node further around the cluster.
+    """
+    await hass.config_entries.async_setup(current_entry.entry_id)
+    await hass.async_block_till_done()
+    client: ProxmoxClient = current_entry.runtime_data[PROXMOX_CLIENT]
+    node = current_entry.runtime_data[COORDINATORS][f"{ProxmoxType.Node}_{NODE}"]
+
+    # What pveproxy does for a node it cannot reach: it drops the
+    # connection, on the host that is answering perfectly well.
+    fake_api.routes["nodes"] = connection_refused(CONFIGURED)
+    await node.async_refresh()
+
+    assert not node.last_update_success
+    assert client.host == CONFIGURED
+    assert client.hosts == (CONFIGURED, *LEARNED)
