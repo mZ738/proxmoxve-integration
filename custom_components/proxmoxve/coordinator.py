@@ -1038,6 +1038,18 @@ class SharedResources:
             return self._rows
         return [row for row in self._rows if row.get("type") == resource_type]
 
+    def note_nodes(self, rows: Any) -> None:
+        """
+        Take the offline nodes from a `cluster/resources` read made elsewhere.
+
+        Setup makes that read itself, before any coordinator exists. Without
+        this, the node-scoped coordinators of a node that is off each wait
+        out pveproxy's answer on their first refresh - seconds apiece, and
+        Home Assistant waiting for the entry all the while.
+        """
+        if isinstance(rows, list):
+            self.nodes_off = nodes_not_online(rows)
+
     def forget(self) -> None:
         """Make the next caller read again - after something changed the cluster."""
         self._read_at = -RESOURCES_TTL
