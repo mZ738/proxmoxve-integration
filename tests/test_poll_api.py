@@ -209,18 +209,21 @@ async def test_a_refused_token_asks_for_credentials(hass: HomeAssistant) -> None
             "0x5002538e40000001",
             "['perm','/nodes/pve',['Sys.Audit']]",
         ),
+        # SMART and the pools are checked against the root, not the node:
+        # Proxmox's own schema says `['perm','/',['Sys.Audit']]` for both,
+        # and a repair naming the node sent the user round in circles -
+        # granting it made the disk list work and nothing else.
         (
             "nodes/pve/disks/smart?disk=/dev/sda",
             ProxmoxType.Disk,
             "0x5002538e40000001",
-            "['perm','/nodes/pve',['Sys.Audit']]",
+            "['perm','/',['Sys.Audit']]",
         ),
-        # A ZFS pool had no case at all and came out as "Unmapped".
         (
             "nodes/pve/disks/zfs",
             ProxmoxType.ZFS,
             "rpool",
-            "['perm','/nodes/pve',['Sys.Audit']]",
+            "['perm','/',['Sys.Audit']]",
         ),
         # A storage id carries its node; the ACL path is the bare name.
         (
