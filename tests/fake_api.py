@@ -569,6 +569,24 @@ def remove_guest(routes: dict[str, Any], kind: str, vmid: int) -> None:
     routes.pop(f"nodes/{NODE}/qemu/{vmid}/agent/get-fsinfo", None)
 
 
+class Answers:
+    """
+    A route that answers differently each time it is asked.
+
+    For the reads that are repeated: the first answer is the failure, the
+    next one what the API would have said. The last answer stands for
+    every call after it.
+    """
+
+    def __init__(self, *answers: Any) -> None:
+        """Take the answers in the order they should come."""
+        self._answers = list(answers)
+
+    def next(self) -> Any:
+        """Return the next answer, keeping the last one for good."""
+        return self._answers.pop(0) if len(self._answers) > 1 else self._answers[0]
+
+
 class FakeProxmox:
     """Answers `ProxmoxVE._request_once` from a route table."""
 
@@ -612,6 +630,8 @@ class FakeProxmox:
             msg = f"no fake route for GET {path}"
             raise api_error(404, "Not Found", msg, path)
         answer = self.routes[path]
+        if isinstance(answer, Answers):
+            answer = answer.next()
         if isinstance(answer, Exception):
             raise answer
         return copy.deepcopy(answer)
