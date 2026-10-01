@@ -279,7 +279,7 @@ class ProxmoxClient:
         """Return the API object."""
         return self._proxmox
 
-    def learn_hosts(self, hosts: Iterable[str]) -> None:
+    def learn_hosts(self, hosts: Iterable[str], *, replace: bool = False) -> None:
         """
         Remember the other nodes of the cluster as places to fall back to.
 
@@ -287,8 +287,122 @@ class ProxmoxClient:
         the corosync address, which on a cluster with a separate cluster
         network is not reachable from Home Assistant at all - so these are
         tried, not relied on. The configured host stays first.
+
+        `replace` hands the library a fresh membership list instead of
+        adding to what it knows, so a cluster that was reduced - or split
+        into standalone servers - does not keep its former peers for good.
+        The host in use is kept either way.
         """
-        self._proxmox.learn_hosts([host for host in hosts if isinstance(host, str)])
+        self._proxmox.learn_hosts(
+            [host for host in hosts if isinstance(host, str)], replace=replace
+        )
+
+    def _answers(self) -> bool:
+        """
+        Return whether the host in use answers `version`.
+
+        The one read every credential may make, and one the host
+        answers itself instead of forwarding it to another node - which
+        is what makes it an answer about the host.
+
+        Any answer counts, a refusal included: a host that says 401 is a
+        host that is there, and a ticket that died while the host was away
+        is answered with exactly that. Only a connection that fails, or one
+        that never answers, means the host is gone.
+        """
+        try:
+            self._proxmox.version.get()
+        except ResourceException as error:
+            LOGGER.debug("Host %s answered %s; it is there", self.host, error)
+        except (AuthenticationError, RequestException) as error:
+            LOGGER.debug("Host %s did not answer: %s", self.host, error)
+            return False
+        return True
+
+    def failover(self, generation: int, *, verify_current: bool = True) -> bool:
+        """
+        Move to the next node that answers, once the current one stopped.
+
+        Every coordinator polls on its own, so several may hit the dead host
+        at once; the first one through switches and the rest see the changed
+        generation and simply retry. A candidate has to answer `version` -
+        the one call every credential may make - before it counts, since a
+        token client is built without touching the network.
+
+        The host is asked first whether it is really gone, because a
+        failed read is no proof that it is: a path names a node, and the
+        host forwards what is not its own - so a guest or a storage on a
+        node that is down fails on a host that is perfectly well.
+        Switching on that walks the cluster, and on a cluster of two it
+        lands on the node that is actually down.
+
+        `verify_current` is for the caller that already has its proof:
+        the setup read found the host unreachable a moment ago, and asking
+        it again would only wait out a second timeout.
+
+        Returns True when a working host is in place (this call's or an
+        earlier one's), False when the host is fine or none of the others
+        answered.
+        """
+        with self._switch_lock:
+            if generation != self.generation:
+                return True
+            if len(self._hosts) < 2:
+                return False
+            if verify_current and self._answers():
+                LOGGER.debug(
+                    "%s still answers; leaving the read to fail on its own",
+                    self.host,
+                )
+                return False
+            for offset in range(1, len(self._hosts)):
+                index = (self._host_index + offset) % len(self._hosts)
+                host = self._hosts[index]
+                try:
+                    proxmox = self._build(host)
+                    proxmox.version.get()
+                except (AuthenticationError, RequestException) as error:
+                    LOGGER.debug("Fallback host %s did not answer: %s", host, error)
+                    continue
+                LOGGER.warning(
+                    "Proxmox at %s stopped answering; using %s until it is back",
+                    self.host,
+                    host,
+                )
+                self._host_index = index
+                self._proxmox = proxmox
+                self.generation += 1
+                return True
+            return False
+
+    def relogin(self) -> bool:
+        """
+        Log in again with the stored password, keeping every reference valid.
+
+        proxmoxer does not keep the password. It renews the ticket with the
+        ticket itself, and a ticket is valid for two hours - so once the host
+        has been unreachable for longer than that, the next renewal is
+        refused with 401, exactly as a wrong password would be, and the
+        session can never recover on its own. This performs the login the
+        way the backend does at construction and swaps the result in, so the
+        coordinators holding the client see the new ticket.
+
+        Returns False for token authentication, which has nothing to renew.
+        Raises AuthenticationError when the password really is wrong.
+        """
+        if self._token_name:
+            return False
+        backend = self._proxmox._backend  # noqa: SLF001
+        auth = ProxmoxHTTPAuth(
+            self._user_id(),
+            self._password,
+            base_url=backend.get_base_url(),
+            verify_ssl=self._verify_ssl,
+            timeout=API_TIMEOUT,
+        )
+        backend.auth = auth
+        self._proxmox._store["session"].auth = auth  # noqa: SLF001
+        return True
 
     def _user_id(self) -> str:
         """Return the user with its realm, as Proxmox wants it."""
