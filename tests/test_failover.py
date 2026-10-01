@@ -5,6 +5,7 @@
 from typing import Any
 from unittest.mock import patch
 
+import pytest
 from aioproxmox import ProxmoxVE
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import CONF_HOST
@@ -46,6 +47,67 @@ async def test_learned_hosts_come_after_the_configured_one(
 
     assert client.hosts == (CONFIGURED, *LEARNED)
     assert client.host == CONFIGURED
+
+
+async def test_standalone_membership_replaces_persisted_cluster_peers(
+    hass: HomeAssistant, fake_api: FakeProxmox, current_entry: MockConfigEntry
+) -> None:
+    """Test retired peers disappear from both the live client and next-start cache."""
+    hass.config_entries.async_update_entry(
+        current_entry,
+        data={**current_entry.data, CONF_CLUSTER_HOSTS: list(LEARNED)},
+    )
+    fake_api.routes["cluster/status"] = [
+        {"type": "node", "name": NODE, "ip": CONFIGURED, "local": 1, "online": 1}
+    ]
+
+    await hass.config_entries.async_setup(current_entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert current_entry.state is ConfigEntryState.LOADED
+    client: ProxmoxClient = current_entry.runtime_data[PROXMOX_CLIENT]
+    assert client.hosts == (CONFIGURED,)
+    assert current_entry.data[CONF_CLUSTER_HOSTS] == []
+
+
+@pytest.mark.parametrize("status", [[], None, {}, [{"type": "cluster"}], [None]])
+async def test_unusable_membership_preserves_persisted_peers(
+    hass: HomeAssistant,
+    fake_api: FakeProxmox,
+    current_entry: MockConfigEntry,
+    status: object,
+) -> None:
+    """Test missing membership is not interpreted as removal of cached peers."""
+    hass.config_entries.async_update_entry(
+        current_entry,
+        data={**current_entry.data, CONF_CLUSTER_HOSTS: list(LEARNED)},
+    )
+    fake_api.routes["cluster/status"] = status
+
+    await hass.config_entries.async_setup(current_entry.entry_id)
+    await hass.async_block_till_done()
+
+    client: ProxmoxClient = current_entry.runtime_data[PROXMOX_CLIENT]
+    assert client.hosts == (CONFIGURED, *LEARNED)
+    assert current_entry.data[CONF_CLUSTER_HOSTS] == list(LEARNED)
+
+
+async def test_failed_membership_read_preserves_persisted_peers(
+    hass: HomeAssistant, fake_api: FakeProxmox, current_entry: MockConfigEntry
+) -> None:
+    """Test an inaccessible endpoint leaves the startup fallback cache intact."""
+    hass.config_entries.async_update_entry(
+        current_entry,
+        data={**current_entry.data, CONF_CLUSTER_HOSTS: list(LEARNED)},
+    )
+    del fake_api.routes["cluster/status"]
+
+    await hass.config_entries.async_setup(current_entry.entry_id)
+    await hass.async_block_till_done()
+
+    client: ProxmoxClient = current_entry.runtime_data[PROXMOX_CLIENT]
+    assert client.hosts == (CONFIGURED, *LEARNED)
+    assert current_entry.data[CONF_CLUSTER_HOSTS] == list(LEARNED)
 
 
 async def test_the_cluster_stays_in_home_assistant_when_the_host_goes(
