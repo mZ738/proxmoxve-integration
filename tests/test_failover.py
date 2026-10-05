@@ -433,6 +433,8 @@ def test_a_host_that_refuses_the_read_is_still_a_host() -> None:
         assert client.failover(client.generation) is False
 
     assert client.host == CONFIGURED
+
+
 async def test_a_node_that_is_off_is_left_alone_from_the_first_refresh(
     hass: HomeAssistant, fake_api: FakeProxmox, current_entry: MockConfigEntry
 ) -> None:
