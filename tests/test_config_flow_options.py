@@ -21,6 +21,7 @@ from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.proxmoxve import DOMAIN
+from custom_components.proxmoxve.config_flow import ProxmoxOptionsFlowHandler
 from custom_components.proxmoxve.const import (
     CONF_AUTO_DISCOVERY,
     CONF_DISKS_ENABLE,
@@ -30,6 +31,7 @@ from custom_components.proxmoxve.const import (
     CONF_NODES,
     CONF_QEMU,
     CONF_REALM,
+    CONF_STORAGE,
     CONF_UPDATE_INTERVAL,
     CONF_UPDATES_ENABLE,
 )
@@ -43,7 +45,7 @@ from .const import (
     USER_INPUT_OPTION_AUTH,
     mock_config_entry,
 )
-from .fake_api import FakeProxmox, ssl_rejection
+from .fake_api import NODE, FakeProxmox, ssl_rejection
 
 
 async def test_options_flow_host_auth(hass: HomeAssistant) -> None:
@@ -475,3 +477,52 @@ async def test_options_flow_advanced_keeps_the_selection_and_sets_the_interval(
     assert options[CONF_ENTITY_ID_PREFIX] == "pve"
     # Set before, shown on the other form, untouched here.
     assert options[CONF_AUTO_DISCOVERY] is True
+
+
+async def test_saving_the_selection_keeps_the_disk_devices(
+    hass: HomeAssistant, fake_api: FakeProxmox, current_entry: MockConfigEntry
+) -> None:
+    """
+    Test the selection form does not take the node's disks with it.
+
+    Reported upstream in #713: the switch for physical disks moved to the
+    Advanced configuration page in 5.2.0, and the selection step kept
+    reading it from its own input - where it no longer is. Every save
+    therefore looked like "disks turned off" and removed the node's disk
+    and pool devices. Home Assistant restores a device it removed when the
+    same identifiers come back, so the device looks unharmed; its entities
+    are created anew, and with *Enable newly added entities* off they come
+    back disabled, which is how the reporter lost his disk health silently.
+
+    The removal itself is what this asserts, because that is the act.
+    """
+    await hass.config_entries.async_setup(current_entry.entry_id)
+    await hass.async_block_till_done()
+
+    removed: list[str] = []
+
+    async def remember(self: object, *, entry_id: str, device_identifier: str) -> bool:
+        removed.append(device_identifier)
+        return True
+
+    with patch.object(ProxmoxOptionsFlowHandler, "async_remove_device", remember):
+        result = await hass.config_entries.options.async_init(
+            current_entry.entry_id, data=None
+        )
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], {"next_step_id": "change_expose"}
+        )
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input={
+                CONF_NODES: [NODE],
+                CONF_QEMU: ["101"],
+                CONF_LXC: ["100"],
+                CONF_STORAGE: [f"storage/{NODE}/local"],
+            },
+        )
+        await hass.async_block_till_done()
+
+    assert result["type"] == FlowResultType.ABORT
+    assert [identifier for identifier in removed if "_DISK_" in identifier] == []
+    assert [identifier for identifier in removed if "_ZFS_" in identifier] == []
