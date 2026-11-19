@@ -81,7 +81,7 @@ def _storage_coordinator(responses: dict[str, object]) -> ProxmoxStorageCoordina
     ) -> object:
         return responses.get(api_path)
 
-    coordinator._poll = _poll  # noqa: SLF001
+    coordinator._poll = _poll
     return coordinator
 
 
