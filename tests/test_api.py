@@ -367,13 +367,20 @@ async def test_a_refused_token_is_an_authentication_error(
     with (
         patch(
             "aioproxmox.ProxmoxVE._request_once",
-            new=AsyncMock(side_effect=api_error(401, "Unauthorized", "")),
+            # What the library raises for any 401 since 0.1.
+            new=AsyncMock(
+                side_effect=ProxmoxAuthError(
+                    "Couldn't authenticate to https://node.example.invalid:8006"
+                    "/api2/json/version: Code 401"
+                )
+            ),
         ),
         pytest.raises(ProxmoxAuthError) as refused,
     ):
         await client.build_client()
 
     assert auth_error_status(refused.value) == 401
+    assert "homeassistant@pve!homeassistant" in str(refused.value)
 
 
 async def test_a_password_client_logs_in_once(hass: HomeAssistant) -> None:

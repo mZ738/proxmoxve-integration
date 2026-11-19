@@ -23,6 +23,14 @@ from .fake_api import NODE, Answers, FakeProxmox, api_error, connection_refused
 FORBIDDEN = api_error(403, "Forbidden", "Permission check failed")
 
 
+# What the library raises for a request refused with 401, since 0.1 -
+# a ticket that died and a token that was refused alike.
+REFUSED_401 = ProxmoxAuthError(
+    "Couldn't authenticate to https://node.example.invalid:8006/api2/json"
+    "/nodes/pve/status: Code 401"
+)
+
+
 def _api(*answers: object) -> MagicMock:
     """Return an API object whose requests answer, or raise, in turn."""
     proxmox = MagicMock()
@@ -135,9 +143,7 @@ async def test_a_refused_ticket_is_renewed_and_the_read_repeated(
         patch("aioproxmox.ProxmoxHTTPAuth._get_new_tokens", new=AsyncMock()) as login,
         patch(
             "aioproxmox.ProxmoxVE._request_once",
-            new=AsyncMock(
-                side_effect=[api_error(401, "Unauthorized", ""), {"status": "online"}]
-            ),
+            new=AsyncMock(side_effect=[REFUSED_401, {"status": "online"}]),
         ) as request,
     ):
         await client.build_client()
@@ -190,7 +196,7 @@ async def test_a_refused_token_asks_for_credentials(hass: HomeAssistant) -> None
     """Test a token has no login to repeat; its 401 goes straight to reauthentication."""
     entry = MockConfigEntry(domain=DOMAIN, data=USER_INPUT_OK)
     entry.add_to_hass(hass)
-    proxmox = _api(api_error(401, "Unauthorized", ""))
+    proxmox = _api(REFUSED_401)
 
     with pytest.raises(ConfigEntryAuthFailed):
         await poll_api(
