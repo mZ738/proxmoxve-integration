@@ -39,6 +39,7 @@ from .api import (
     CONNECTION_ERRORS,
     REQUEST_ERRORS,
     SSL_ERRORS,
+    TIMEOUT_ERRORS,
     CABundleError,
     ProxmoxClient,
     auth_error_status,
@@ -1023,7 +1024,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
             f"for proxmox instance {host}:{port}"
         )
         raise ConfigEntryNotReady(msg) from error
-    except TimeoutError as error:
+    except TIMEOUT_ERRORS as error:
         msg = f"Connection to host {host} timed out during setup"
         raise ConfigEntryNotReady(msg) from error
     except CONNECTION_ERRORS as error:

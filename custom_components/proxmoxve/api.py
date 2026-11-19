@@ -11,7 +11,13 @@ from typing import Any
 import aiohttp
 import homeassistant.util.dt as dt_util
 from aioproxmox import ProxmoxVE
-from aioproxmox.exceptions import ProxmoxAPIError, ProxmoxAuthError
+from aioproxmox.exceptions import (
+    ProxmoxAPIError,
+    ProxmoxAuthError,
+    ProxmoxConnectionError,
+    ProxmoxSSLError,
+    ProxmoxTimeoutError,
+)
 from homeassistant.const import CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
@@ -36,15 +42,25 @@ API_TIMEOUT = 30
 
 # What a request raises when the host is not there, does not answer in
 # time, or closes the connection - everything that says nothing about the
-# credentials or the request itself. aiohttp wraps the socket errors, and
-# `asyncio.TimeoutError` is `TimeoutError` since Python 3.11.
+# credentials or the request itself. The library raises its own
+# ProxmoxConnectionError for all of it since 0.1; the aiohttp errors and
+# `TimeoutError` stay for anything that reaches the session directly.
 CONNECTION_ERRORS: tuple[type[BaseException], ...] = (
+    ProxmoxConnectionError,
     aiohttp.ClientError,
     TimeoutError,
 )
 # The connection failed because the certificate was not accepted; a subset
 # of the above, so it has to be caught first where it matters.
-SSL_ERRORS: tuple[type[BaseException], ...] = (aiohttp.ClientSSLError,)
+SSL_ERRORS: tuple[type[BaseException], ...] = (
+    ProxmoxSSLError,
+    aiohttp.ClientSSLError,
+)
+# The host did not answer in time; also a subset of CONNECTION_ERRORS.
+TIMEOUT_ERRORS: tuple[type[BaseException], ...] = (
+    ProxmoxTimeoutError,
+    TimeoutError,
+)
 # Anything a request may raise - for the callers that only want to know
 # that it did not work.
 REQUEST_ERRORS: tuple[type[BaseException], ...] = (
@@ -107,9 +123,9 @@ def is_auth_error(error: BaseException) -> bool:
     """
     Return whether `error` says the credentials were refused.
 
-    A password login answers with ProxmoxAuthError. A token is never
-    logged in - the first request made with it is refused with 401, and
-    that arrives as an API error like any other.
+    A password login answers with ProxmoxAuthError, and since aioproxmox
+    0.1 so does any request refused with 401 - a token's included. The API
+    error with 401 is what older versions raised for a refused token.
     """
     if isinstance(error, ProxmoxAuthError):
         return True
@@ -204,8 +220,8 @@ class ProxmoxClient:
         A password is logged in; a token is not, so the one read every
         credential may make - `version` - stands in for the login, and a
         refused token is reported here rather than by whatever is read
-        first. Raises ProxmoxAuthError for refused credentials, the aiohttp
-        errors for a host that is not there, ProxmoxAPIError for anything
+        first. Raises ProxmoxAuthError for refused credentials,
+        ProxmoxConnectionError for a host that is not there, ProxmoxAPIError for anything
         else the API answered, and CABundleError for a bundle path that
         cannot be read.
 
@@ -242,11 +258,10 @@ class ProxmoxClient:
                 # `request` moves to another node itself when the current
                 # one does not answer and others are known.
                 await proxmox.request("GET", "version")
-            except ProxmoxAPIError as error:
-                if error.status == 401:
-                    msg = f"Token {user_id}!{token_name} was refused: Code 401"
-                    raise ProxmoxAuthError(msg) from error
-                raise
+            except ProxmoxAuthError as error:
+                # The library's own message names only the URL.
+                msg = f"Token {user_id}!{token_name} was refused: Code 401"
+                raise ProxmoxAuthError(msg) from error
         else:
             proxmox = ProxmoxVE(
                 session,

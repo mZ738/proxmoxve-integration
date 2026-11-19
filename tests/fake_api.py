@@ -27,7 +27,12 @@ from unittest.mock import AsyncMock, patch
 
 import aiohttp
 from aiohttp.client_reqrep import ConnectionKey
-from aioproxmox.exceptions import ProxmoxAPIError
+from aioproxmox import _translate_client_errors
+from aioproxmox.exceptions import (
+    ProxmoxAPIError,
+    ProxmoxAuthError,
+    ProxmoxNodeUnreachableError,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -50,6 +55,18 @@ def api_error(
     """
     text = message or reason
     return ProxmoxAPIError(status, text, path)
+
+
+def _as_the_library_raises(error: ProxmoxAPIError) -> Exception:
+    """Return the error the library raises for an answer with this status."""
+    if isinstance(error, ProxmoxAuthError | ProxmoxNodeUnreachableError):
+        return error
+    if error.status == 401:
+        return ProxmoxAuthError(f"Couldn't authenticate to {error.endpoint}: Code 401")
+    if error.status in {595, 596}:
+        message = str(error).split(": ", 1)[-1]
+        return ProxmoxNodeUnreachableError(error.status, message, error.endpoint)
+    return error
 
 
 def _connection_key(host: str = "192.168.10.101") -> ConnectionKey:
@@ -616,7 +633,31 @@ class FakeProxmox:
 
         `timeout` is what the library passes for the short probes that ask
         a host whether it is there; the fake answers either way.
+
+        What it raises is turned into what the library's own single
+        attempt raises: aiohttp errors become ProxmoxConnectionError and
+        its kin, a 401 is a ProxmoxAuthError, and 595 and 596 are
+        ProxmoxNodeUnreachableError. A route table can keep spelling them
+        the way the API answers.
         """
+        with _translate_client_errors(proxmox.base_url):
+            try:
+                return self._answer(proxmox, method, path, json_data, params)
+            except ProxmoxAPIError as error:
+                translated = _as_the_library_raises(error)
+                if translated is error:
+                    raise
+                raise translated from error
+
+    def _answer(
+        self,
+        proxmox: ProxmoxVE,
+        method: str,
+        path: str,
+        json_data: dict | None,
+        params: dict | None,
+    ) -> Any:
+        """Return the route's answer, or raise it."""
         host = proxmox.host
         self.hosts_seen.append(host)
         if host in self.dead_hosts:
