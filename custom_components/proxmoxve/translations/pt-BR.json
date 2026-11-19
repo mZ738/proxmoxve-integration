@@ -20,10 +20,16 @@
                     "qemu": "Maquinas Virtuais (QEMU)",
                     "lxc": "Contêiners Linux (LXC)",
                     "storage": "Armazenamentos",
-                    "disks_enable": "Habilitar informações dos discos físicos"
+                    "disks_enable": "Habilitar informações dos discos físicos",
+                    "auto_discovery": "Rastrear tudo automaticamente",
+                    "entity_id_scheme": "Esquema do ID das entidades",
+                    "entity_id_prefix": "Prefixo para o esquema estendido"
                 },
                 "data_description": {
-                    "disks_enable": "Se você trabalha com a hibernação dos discos, você deverá desabilitar esta opção da integração para que não cause a reativação dos discos indevidamente."
+                    "disks_enable": "Se você trabalha com a hibernação dos discos, você deverá desabilitar esta opção da integração para que não cause a reativação dos discos indevidamente.",
+                    "auto_discovery": "Rastrear cada nó, máquina virtual, contêiner e armazenamento de credenciais que podem ver, e siga o cluster daqui pra frente: o que for adicionado é incluído, o que for removido é removido. A seleção acima é ignorada enquanto isto estiver em andamento. Os modelos nunca são rastreados.",
+                    "entity_id_scheme": "Standard: Home Assistant's device then name, `qemu_win11_108_cpu_used`. Extended: prefix, kind, id, name, item - `pve_qemu_108_win11_cpu_used` - so a search or a recorder filter catches everything by the prefix and a list sorts by id. Applies to entities created from now on; ids that exist keep them.",
+                    "entity_id_prefix": "The first part of every entity id under the extended scheme; `pve` unless you choose otherwise. Not used by the standard scheme."
                 }
             },
             "reauth_confirm": {
@@ -54,6 +60,7 @@
             "cant_connect": "Falha ao conectar",
             "general_error": "Erro inesperado",
             "invalid_port": "Número da porta inválida",
+            "nodes_required": "Pick at least one node, or turn on Track everything automatically.",
             "ssl_rejection": "Não foi possível verificar o certificado SSL"
         },
         "abort": {
@@ -100,9 +107,25 @@
             "title": "A configuração YAML de {integration} está obsoleta",
             "description": "A configuração YAML da integração {integration} (`{platform}`) foi descontinuada e será removida na versão {version}. Resolva os problemas de importação e remova a configuração YAML do arquivo `configuration.yaml`."
         },
+        "resources_nonexistent": {
+            "description": "These resources are tracked, but the cluster at `{host}:{port}` does not list them. Remove them in the integration options - or, if they do exist, user `{user}` may lack the privilege to see them, noted after each one:\n\n{items}",
+            "title": "{count} tracked resource(s) not found on {host}"
+        },
         "no_permissions": {
             "description": "O usuário `{user}` não possui as permissões necessárias para todos os recursos.\n\nOs seguintes recursos não são acessíveis pelo usuário:\n`{errors}`\n\nVerifique as permissões do usuário conforme descrito na documentação.",
             "title": "O usuário `{user}` não possui as permissões necessárias"
+        },
+        "resources_forbidden": {
+            "description": "User `{user}` may not read these resources. Grant the privilege noted after each one, on the path shown or one above it, and reload the integration:\n\n{items}\n\nThe permissions documentation lists the roles the integration needs.",
+            "title": "{count} resource(s) not readable by `{user}`"
+        },
+        "guest_agent_fsinfo_forbidden": {
+            "description": "User `{user}` may not query the QEMU guest agent of these VMs: {vms}.\n\nTheir disk usage falls back to what the host sees - for most VMs that is nothing. Reading it needs, on the VMs or on a path above them:\n* `{permission}`\n\nOn Proxmox VE 8 the privilege is `VM.Monitor` instead. The built-in `PVEAuditor` role carries it. Grant it and reload the integration.",
+            "title": "Guest agent not readable"
+        },
+        "guest_agent_file_forbidden": {
+            "description": "User `{user}` may not read files through the QEMU guest agent of these VMs: {vms}.\n\nTheir guest file sensor cannot be created. Reading it needs, on the VMs or on a path above them:\n* `{permission}`\n\nOn Proxmox VE 8 the privilege is `VM.Monitor` instead. Grant it and reload the integration, or clear the file path in the integration options.",
+            "title": "Guest file not readable"
         },
         "resource_command_forbiden": {
             "description": "O usuário `{user}` não tem permissões suficientes para executar o comando `{command}` no recurso `{resource}`.\n\nDica sobre as permissões necessárias:\n* `{permission}`\n\nPor favor, verifique a documentação e as permissões do usuário.",
@@ -115,6 +138,7 @@
                 "menu_options": {
                     "host_auth": "Alterar as informações de autenticação do host",
                     "change_expose": "Adicionar ou remover Nós, VMs, Contêineres ou Armazenamentos",
+                    "advanced": "Advanced configuration: polling, physical disks, tasks, updates, backups, entity ids",
                     "cluster_ha_auth": "Optional: cluster HA administration (advanced)"
                 }
             },
@@ -131,14 +155,14 @@
             "cluster_ha_auth": {
                 "description": "Optional and separate from the main credentials above. Enables the Arm HA / Disarm HA buttons and a per-VM/CT \"HA managed\" sensor. These require Sys.Console and Sys.Audit permissions on the Proxmox root path ('/') — significantly broader than anything else this integration needs, and enough to affect the whole cluster's HA fencing behavior. Only fill this in if you understand and accept that risk; leave every field empty to leave these features disabled.",
                 "data": {
-                    "ha_admin_username": "Username",
-                    "ha_admin_token_name": "Token name",
-                    "ha_admin_password": "Password or token value",
-                    "ha_admin_realm": "Realm"
+                    "ha_admin_username": "Usuário",
+                    "ha_admin_token_name": "Nome do token",
+                    "ha_admin_password": "Senha ou token",
+                    "ha_admin_realm": "Domínio"
                 },
                 "data_description": {
-                    "ha_admin_username": "Leave empty (along with the fields below) to disable the Arm/Disarm HA buttons and the HA managed sensor.",
-                    "ha_admin_password": "Needs Sys.Console (arm/disarm) and Sys.Audit (HA resource list) on '/' — not the scoped permissions recommended for the main integration user."
+                    "ha_admin_username": "Deixe em branco (junto com os campos abaixo) para desativar os botões de ativar/desativar HA e o sensor gerenciado pelo AHA",
+                    "ha_admin_password": "Precisa do `Sys.Console` (ativar/desativar) e `Sys.Audit` (lista de recursos HA) em '/' — não as permissões com o escopo recomendadas para o usuário de integração principal."
                 }
             },
             "change_expose": {
@@ -147,22 +171,36 @@
                     "lxc": "Contêiners Linux (LXC)",
                     "nodes": "Nós",
                     "qemu": "Maquinas Virtuais (QEMU)",
-                    "storage": "Armazenamentos"
+                    "storage": "Armazenamentos",
+                    "auto_discovery": "Rastrear tudo automaticamente"
                 },
                 "data_description": {
+                    "auto_discovery": "Rastrear cada nó, máquina virtual, contêiner e armazenamento de credenciais que podem ver, e siga o cluster daqui pra frente: o que for adicionado é incluído, o que for removido é removido. A seleção acima é ignorada enquanto isto estiver em andamento. Os modelos nunca são rastreados."
                 }
             },
             "advanced": {
-               "data": {
+                "title": "Configurações avançadas",
+                "description": "O que é lido além do básico, com que frequência e como as entidades são nomeadas. Cada campo tem uma configuração padrão é executada com sucesso.",
+                "data": {
                     "disks_enable": "Habilitar informações dos discos físicos",
                     "tasks_enable": "Monitorar tarefas que falharam",
-                    "guest_file_path": "Guest file path to monitor (QEMU, requires guest agent)"
-               },
-               "data_description": {
+                    "updates_enable": "Monitorar atualizações de pacotes",
+                    "update_interval": "Intervalo de pesquisa",
+                    "guest_file_path": "Caminho do arquivo de convidado para monitorar (QEMU, requer agente convidado)",
+                    "backup_storage": "Local de armazenamento para os backups a partir dos botões",
+                    "entity_id_scheme": "Esquema do ID da entidade",
+                    "entity_id_prefix": "Prefixo para o esquema estendido"
+                },
+                "data_description": {
                     "disks_enable": "Se você trabalha com a hibernação dos discos, você deverá desabilitar esta opção da integração para que não cause a reativação dos discos indevidamente.",
                     "tasks_enable": "Rastrear e reportar tarefas que falharam nas últimas 24 horas nos nós selecionados.",
-                    "guest_file_path": "Absolute path of a file inside each tracked QEMU guest to read via the guest agent and expose as a sensor. Leave empty to disable. Requires the QEMU guest agent to be running in the guest."
-               }
+                    "updates_enable": "Read the pending package upgrades of each node into an update entity and a count sensor. Needs Sys.Modify on the node; switch this off to run without that privilege - or without the entities.",
+                    "update_interval": "How often nodes, guests, storage and backups are read. 60 seconds unless changed; Proxmox itself refreshes guest figures about every 10 seconds. Certificates, subscriptions and Ceph are read hourly, failed tasks every five minutes, whatever is set here.",
+                    "guest_file_path": "Absolute path of a file inside each tracked QEMU guest to read via the guest agent and expose as a sensor. Leave empty to disable. Requires the QEMU guest agent to be running in the guest.",
+                    "backup_storage": "Where the \"Back up now\" and \"Back up all\" buttons write their backups (snapshot mode). The buttons exist only while a storage is picked here and the credentials hold VM.Backup. Storages that accept backups are listed; any other name can be typed in.",
+                    "entity_id_scheme": "Standard: Home Assistant's device then name, `qemu_win11_108_cpu_used`. Extended: prefix, kind, id, name, item - `pve_qemu_108_win11_cpu_used` - so a search or a recorder filter catches everything by the prefix and a list sorts by id. Applies to entities created from now on; ids that exist keep them.",
+                    "entity_id_prefix": "The first part of every entity id under the extended scheme; `pve` unless you choose otherwise. Not used by the standard scheme."
+                }
             }
         },
         "error": {
@@ -190,26 +228,75 @@
             "status": {
                 "name": "Status"
             },
+            "backup_running": {
+                "name": "Backup em andamento",
+                "state_attributes": {
+                    "running_since": {
+                        "name": "Iniciado"
+                    },
+                    "running_guests": {
+                        "name": "Convidados"
+                    }
+                }
+            },
             "health": {
                 "name": "Integridade"
             },
             "locked": {
-                "name": "Locked"
+                "name": "Bloqueado"
+            },
+            "guest_agent": {
+                "name": "Agente convidado"
             },
             "update_avail": {
                 "name": "Pacotes de atualizações"
             },
             "ha_managed": {
-                "name": "HA managed"
+                "name": "HA gerenciada"
             },
             "replication_failing": {
-                "name": "Replication failing"
+                "name": "Falha na replicação"
             },
             "cluster_quorate": {
                 "name": "Quorate"
             },
             "ha_crm_master_stale": {
                 "name": "CRM master stale"
+            },
+            "storage_active": {
+                "name": "Armazenamento ativo",
+                "state": {
+                    "on": "Ativo",
+                    "off": "Inactive"
+                }
+            },
+            "storage_enabled": {
+                "name": "Storage enabled",
+                "state": {
+                    "on": "Enabled",
+                    "off": "Disabled"
+                }
+            },
+            "storage_shared": {
+                "name": "Storage shared",
+                "state": {
+                    "on": "Shared",
+                    "off": "Not shared"
+                }
+            },
+            "backup_status": {
+                "name": "Backup status",
+                "state_attributes": {
+                    "status": {
+                        "name": "Status"
+                    },
+                    "guests": {
+                        "name": "Guests"
+                    },
+                    "user": {
+                        "name": "User"
+                    }
+                }
             }
         },
         "button": {
@@ -251,11 +338,92 @@
             },
             "disarm_ha": {
                 "name": "Disarm HA"
+            },
+            "suspend_all": {
+                "name": "Suspend all"
+            },
+            "snapshot": {
+                "name": "Create snapshot"
+            },
+            "backup": {
+                "name": "Back up now"
+            },
+            "backup_all": {
+                "name": "Back up all"
             }
         },
         "sensor": {
             "cpu_used": {
-                "name": "CPU em uso"
+                "name": "CPU em uso",
+                "state_attributes": {
+                    "cpus": {
+                        "name": "Cores"
+                    }
+                }
+            },
+            "cpu_of_host": {
+                "name": "CPU used of host"
+            },
+            "pressure_cpu_some": {
+                "name": "CPU pressure"
+            },
+            "pressure_cpu_full": {
+                "name": "CPU pressure stalled"
+            },
+            "pressure_io_some": {
+                "name": "IO pressure"
+            },
+            "pressure_io_full": {
+                "name": "IO pressure stalled"
+            },
+            "pressure_memory_some": {
+                "name": "Memory pressure"
+            },
+            "pressure_memory_full": {
+                "name": "Memory pressure stalled"
+            },
+            "memory_of_host": {
+                "name": "Memory used on host"
+            },
+            "ip_address": {
+                "name": "IP address",
+                "state_attributes": {
+                    "ip_addresses": {
+                        "name": "IP addresses"
+                    },
+                    "interfaces": {
+                        "name": "Interfaces"
+                    }
+                }
+            },
+            "snapshots": {
+                "name": "Snapshots",
+                "state_attributes": {
+                    "snapshot_names": {
+                        "name": "Snapshot names"
+                    },
+                    "snapshot_latest": {
+                        "name": "Latest snapshot"
+                    }
+                }
+            },
+            "cpus": {
+                "name": "CPUs"
+            },
+            "load_1m": {
+                "name": "Load average 1 min"
+            },
+            "load_5m": {
+                "name": "Load average 5 min"
+            },
+            "load_15m": {
+                "name": "Load average 15 min"
+            },
+            "io_wait": {
+                "name": "IO delay"
+            },
+            "version": {
+                "name": "Version"
             },
             "disk_free": {
                 "name": "Disco disponível"
@@ -315,6 +483,54 @@
                         "name": "Checks"
                     }
                 }
+            },
+            "ceph_used": {
+                "name": "Ceph used"
+            },
+            "ceph_total": {
+                "name": "Ceph total"
+            },
+            "ceph_used_perc": {
+                "name": "Ceph used percentage"
+            },
+            "cluster_nodes_online": {
+                "name": "Nodes online",
+                "state_attributes": {
+                    "nodes_total": {
+                        "name": "Nodes"
+                    },
+                    "nodes_offline": {
+                        "name": "Nodes offline"
+                    }
+                }
+            },
+            "cluster_qemu_running": {
+                "name": "Virtual machines running",
+                "state_attributes": {
+                    "qemu_total": {
+                        "name": "Virtual machines"
+                    }
+                }
+            },
+            "cluster_lxc_running": {
+                "name": "Containers running",
+                "state_attributes": {
+                    "lxc_total": {
+                        "name": "Containers"
+                    }
+                }
+            },
+            "cluster_cpu_used": {
+                "name": "CPU used"
+            },
+            "cluster_memory_used_perc": {
+                "name": "Memory used percentage"
+            },
+            "cluster_memory_used": {
+                "name": "Memory used"
+            },
+            "cluster_memory_total": {
+                "name": "Memory total"
             },
             "certificate_expires": {
                 "name": "Certificate expires",
@@ -447,7 +663,12 @@
                 "name": "Rede enviado"
             },
             "node": {
-                "name": "Nó"
+                "name": "Nó",
+                "state_attributes": {
+                    "nodes": {
+                        "name": "Nodes"
+                    }
+                }
             },
             "power_cycles": {
                 "name": "Ciclos de energia"
@@ -474,7 +695,18 @@
                     "paused": "Pausado",
                     "stopped": "Desligado",
                     "suspended": "Suspenso",
-                    "running": "Executando"
+                    "running": "Executando",
+                    "shutdown": "Shutting down",
+                    "io-error": "I/O error",
+                    "guest-panicked": "Guest panicked",
+                    "watchdog": "Watchdog",
+                    "inmigrate": "Incoming migration",
+                    "postmigrate": "Migrated away",
+                    "finish-migrate": "Finishing migration",
+                    "restore-vm": "Restoring",
+                    "save-vm": "Saving state",
+                    "debug": "Debug",
+                    "colo": "COLO"
                 }
             },
             "swap_free": {
@@ -505,7 +737,141 @@
             },
             "uptime": {
                 "name": "Última inicialização"
+            },
+            "backup_last": {
+                "name": "Last backup",
+                "state_attributes": {
+                    "status": {
+                        "name": "Status"
+                    },
+                    "guests": {
+                        "name": "Guests"
+                    },
+                    "user": {
+                        "name": "User"
+                    }
+                }
+            },
+            "backup_duration": {
+                "name": "Backup duration"
+            },
+            "node_status": {
+                "name": "Status",
+                "state": {
+                    "online": "Online",
+                    "offline": "Offline",
+                    "unknown": "Unknown"
+                }
             }
+        },
+        "update": {
+            "node_update": {
+                "name": "Software update"
+            }
+        }
+    },
+    "selector": {
+        "realm": {
+            "options": {
+                "pam": "pam - Linux PAM standard authentication",
+                "pve": "pve - Proxmox VE authentication server"
+            }
+        },
+        "backup_mode": {
+            "options": {
+                "snapshot": "Snapshot",
+                "suspend": "Suspend",
+                "stop": "Stop"
+            }
+        },
+        "update_interval": {
+            "options": {
+                "30": "30 seconds",
+                "45": "45 seconds",
+                "60": "60 seconds (default)",
+                "90": "90 seconds",
+                "120": "2 minutes"
+            }
+        },
+        "entity_id_scheme": {
+            "options": {
+                "standard": "Standard - device then name (Home Assistant default)",
+                "extended": "Extended - prefix, kind, id, name, item"
+            }
+        },
+        "backup_compress": {
+            "options": {
+                "zstd": "zstd",
+                "gzip": "gzip",
+                "lzo": "lzo",
+                "0": "None"
+            }
+        }
+    },
+    "services": {
+        "backup": {
+            "name": "Back up guests",
+            "description": "Starts backup runs (vzdump) for the targeted guests, nodes or cluster - or for the node and guest ids named. One run per node; returns their task ids.",
+            "fields": {
+                "node": {
+                    "name": "Node",
+                    "description": "A node to back up on, by name. Not needed when devices are targeted or guests are named: their node is looked up."
+                },
+                "vmid": {
+                    "name": "Guests",
+                    "description": "IDs of VMs and containers to back up, wherever in the cluster they live."
+                },
+                "all": {
+                    "name": "All",
+                    "description": "Back up every guest the node hosts - on the named node, or on every tracked node when none is named or targeted."
+                },
+                "storage": {
+                    "name": "Storage",
+                    "description": "Where to store the backup. Defaults to the storage picked for the backup buttons in the integration options, or to the node's own default."
+                },
+                "mode": {
+                    "name": "Mode",
+                    "description": "How to freeze the guest: snapshot (no downtime), suspend, or stop."
+                },
+                "compress": {
+                    "name": "Compression",
+                    "description": "zstd, gzip, lzo, or none. Defaults to the node's setting."
+                },
+                "notes": {
+                    "name": "Notes",
+                    "description": "Notes template for the backup, for example {{guestname}}."
+                },
+                "skip_if_running": {
+                    "name": "Skip if running",
+                    "description": "Leave a node out while a backup is already running on it, instead of queuing behind it."
+                }
+            }
+        }
+    },
+    "exceptions": {
+        "backup_nothing_selected": {
+            "message": "Target a guest, node or cluster device, name a guest or node, or turn on 'All'."
+        },
+        "backup_target_not_supported": {
+            "message": "{device} cannot be backed up; target a guest, a node or the cluster."
+        },
+        "backup_target_unknown": {
+            "message": "Device {device} does not exist."
+        },
+        "backup_unknown_guest": {
+            "message": "No configured Proxmox VE integration tracks guest {vmid}."
+        },
+        "backup_notes_need_storage": {
+            "message": "Notes can only be set together with a storage; Proxmox refuses the template without one."
+        },
+        "backup_unknown_node": {
+            "message": "No configured Proxmox VE integration tracks node {node}."
+        },
+        "backup_refused": {
+            "message": "Proxmox refused to start the backup on {node}: {error}"
+        },
+        "backup_unreachable": {
+            "message": "Node {node} could not be reached to start the backup: {error}"
         }
     }
 }
