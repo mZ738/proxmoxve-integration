@@ -649,7 +649,7 @@ class FakeProxmox:
                     raise
                 raise translated from error
 
-    def _answer(  # noqa: PLR0917
+    def _answer(
         self,
         proxmox: ProxmoxVE,
         method: str,
