@@ -228,7 +228,9 @@ class ProxmoxClient:
         Where the cluster's other nodes are known from an earlier setup,
         a configured host that does not answer at all is left for one of
         them right here: the login is what a restart runs into first, and
-        without this the entry could not load while that node is down.
+        without this the entry could not load while that node is down. A
+        certificate that is not accepted is no such host, and is reported
+        whichever nodes are known.
         """
         verify_ssl: bool | ssl.SSLContext = bool(self._verify_ssl)
         session = async_get_clientsession(self._hass, verify_ssl=bool(verify_ssl))
@@ -275,6 +277,10 @@ class ProxmoxClient:
             proxmox.learn_hosts(list(self._fallback_hosts))
             try:
                 await proxmox.auth.async_init()  # type: ignore[attr-defined]
+            except SSL_ERRORS:
+                # Not a host that is gone, and the node next to it is no
+                # answer to it. `request` draws the same line for a token.
+                raise
             except CONNECTION_ERRORS:
                 # The login goes straight out, with no failover of its
                 # own. A node that answers `version` is one to log in to;

@@ -2,27 +2,37 @@
 # SPDX-License-Identifier: MIT
 """Tests for moving to another node of the cluster when the configured one is gone."""
 
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
 
 import pytest
 from aioproxmox import ProxmoxVE
+from aioproxmox.exceptions import ProxmoxSSLError
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.proxmoxve.api import ProxmoxClient
+from custom_components.proxmoxve.api import ProxmoxClient, post_api_command
 from custom_components.proxmoxve.const import (
     CONF_CLUSTER_HOSTS,
     CONF_TOKEN_NAME,
     COORDINATORS,
     PROXMOX_CLIENT,
+    ProxmoxCommand,
     ProxmoxType,
 )
 from custom_components.proxmoxve.coordinator import shared_resources
 
-from .fake_api import NODE, FakeProxmox, api_error, connection_refused
+from .fake_api import (
+    NODE,
+    FakeProxmox,
+    api_error,
+    connection_refused,
+    ssl_rejection,
+)
 
 CONFIGURED = "192.168.10.101"
 LEARNED = ("192.0.2.10", "192.0.2.11")
@@ -190,10 +200,79 @@ async def test_nothing_else_answering_leaves_the_configured_host(
     node = current_entry.runtime_data[COORDINATORS][f"{ProxmoxType.Node}_{NODE}"]
 
     fake_api.dead_hosts.update((CONFIGURED, *LEARNED))
+    seen_before = len(fake_api.hosts_seen)
     await node.async_refresh()
 
     assert not node.last_update_success
     assert client.host == CONFIGURED
+    # Each of the others was asked, by its own address: the client did not
+    # have to move to one to find out that it is not there.
+    assert set(fake_api.hosts_seen[seen_before:]) == {CONFIGURED, *LEARNED}
+
+
+async def test_a_command_goes_again_where_the_connection_was_never_made(
+    hass: HomeAssistant, fake_api: FakeProxmox, current_entry: MockConfigEntry
+) -> None:
+    """
+    Test a button pressed while the host refuses still does what it says.
+
+    A port that refuses took nothing: the command cannot have arrived, so
+    sending it to the node the client moved to runs it once.
+    """
+    await hass.config_entries.async_setup(current_entry.entry_id)
+    await hass.async_block_till_done()
+    client: ProxmoxClient = current_entry.runtime_data[PROXMOX_CLIENT]
+    entity = SimpleNamespace(hass=hass, config_entry=current_entry)
+
+    fake_api.dead_hosts.add(CONFIGURED)
+    await post_api_command(
+        entity,
+        proxmox_client=client,
+        api_category=ProxmoxType.QEMU,
+        command=ProxmoxCommand.SHUTDOWN,
+        node=NODE,
+        vm_id=101,
+    )
+
+    assert client.host == LEARNED[0]
+    assert fake_api.paths("POST") == [f"nodes/{NODE}/qemu/101/status/shutdown"]
+
+
+async def test_a_command_that_may_have_arrived_is_not_sent_twice(
+    hass: HomeAssistant, fake_api: FakeProxmox, current_entry: MockConfigEntry
+) -> None:
+    """
+    Test a command the host took and never answered is reported, not repeated.
+
+    A timeout says nothing about how far the request got. The guest may be
+    shutting down already, and a second shutdown - or a second backup - is
+    worse than an error. The client still moves, so pressing again works.
+    """
+    await hass.config_entries.async_setup(current_entry.entry_id)
+    await hass.async_block_till_done()
+    client: ProxmoxClient = current_entry.runtime_data[PROXMOX_CLIENT]
+    entity = SimpleNamespace(hass=hass, config_entry=current_entry)
+
+    async def shutdown() -> None:
+        await post_api_command(
+            entity,
+            proxmox_client=client,
+            api_category=ProxmoxType.QEMU,
+            command=ProxmoxCommand.SHUTDOWN,
+            node=NODE,
+            vm_id=101,
+        )
+
+    fake_api.silent_hosts.add(CONFIGURED)
+    with pytest.raises(HomeAssistantError, match="Timeout"):
+        await shutdown()
+
+    assert client.host == LEARNED[0]
+    assert fake_api.paths("POST") == []
+
+    await shutdown()
+
+    assert fake_api.paths("POST") == [f"nodes/{NODE}/qemu/101/status/shutdown"]
 
 
 async def test_the_entry_remembers_the_cluster_for_the_next_start(
@@ -204,6 +283,37 @@ async def test_the_entry_remembers_the_cluster_for_the_next_start(
     await hass.async_block_till_done()
 
     assert current_entry.data[CONF_CLUSTER_HOSTS] == list(LEARNED)
+
+
+async def test_the_same_nodes_in_another_order_change_nothing(
+    hass: HomeAssistant, fake_api: FakeProxmox, current_entry: MockConfigEntry
+) -> None:
+    """
+    Test the entry is not rewritten because the cluster listed its nodes anew.
+
+    `cluster/status` names the nodes in a different order from one call to
+    the next. Taken as it came, that reshuffled the hosts the client tries
+    and wrote the entry again at every start, for a cluster that had not
+    changed at all.
+    """
+    hass.config_entries.async_update_entry(
+        current_entry,
+        data={**current_entry.data, CONF_CLUSTER_HOSTS: list(LEARNED)},
+    )
+    cluster, *nodes = fake_api.routes["cluster/status"]
+    fake_api.routes["cluster/status"] = [cluster, *reversed(nodes)]
+
+    with patch.object(
+        hass.config_entries,
+        "async_update_entry",
+        wraps=hass.config_entries.async_update_entry,
+    ) as update_entry:
+        await hass.config_entries.async_setup(current_entry.entry_id)
+        await hass.async_block_till_done()
+
+    client: ProxmoxClient = current_entry.runtime_data[PROXMOX_CLIENT]
+    assert client.hosts == (CONFIGURED, *LEARNED)
+    assert not [call for call in update_entry.call_args_list if "data" in call.kwargs]
 
 
 async def test_a_start_while_the_configured_host_is_down(
@@ -319,6 +429,50 @@ async def test_a_login_that_meets_a_dead_host_moves_on(
     assert client.host == LEARNED[0]
     assert CONFIGURED in logged_in[0]
     assert LEARNED[0] in logged_in[-1]
+
+
+async def test_a_certificate_refused_at_the_login_is_reported(
+    hass: HomeAssistant, fake_api: FakeProxmox
+) -> None:
+    """
+    Test a certificate that does not verify sends the login nowhere else.
+
+    That host is there. Moving to the node next to it would hide what is
+    wrong with this one for as long as the other keeps answering, and a
+    token setup - whose first read goes through `request()` - reports it
+    too.
+    """
+    client = ProxmoxClient(
+        hass,
+        host=CONFIGURED,
+        user="homeassistant",
+        password="secret",  # noqa: S106 - invented
+        realm="pve",
+        verify_ssl=False,
+        fallback_hosts=LEARNED,
+    )
+    logins = 0
+
+    async def login(**_kwargs: Any) -> None:
+        nonlocal logins
+        logins += 1
+        msg = f"SSL error connecting to {CONFIGURED}"
+        raise ProxmoxSSLError(msg) from ssl_rejection(CONFIGURED)
+
+    real_init = ProxmoxVE.__init__
+
+    def refuse(self: Any, *args: Any, **kwargs: Any) -> None:
+        real_init(self, *args, **kwargs)
+        self.auth._get_new_tokens = login  # noqa: SLF001
+
+    with (
+        patch.object(ProxmoxVE, "__init__", refuse),
+        pytest.raises(ProxmoxSSLError),
+    ):
+        await client.build_client()
+
+    assert logins == 1
+    assert fake_api.hosts_seen == []
 
 
 async def test_a_node_the_cluster_calls_offline_is_not_asked_after(

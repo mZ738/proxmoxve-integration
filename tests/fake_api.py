@@ -24,6 +24,7 @@ import ssl
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, patch
+from urllib.parse import urlsplit
 
 import aiohttp
 from aiohttp.client_reqrep import ConnectionKey
@@ -88,6 +89,11 @@ def connection_refused(host: str = "192.168.10.101") -> aiohttp.ClientConnectorE
     return aiohttp.ClientConnectorError(
         _connection_key(host), OSError(111, f"{host} refused the connection")
     )
+
+
+def _host_of(base_url: str) -> str:
+    """Return the host of an API URL, spelled the way the library keeps it."""
+    return urlsplit(base_url).netloc.rsplit(":", 1)[0]
 
 
 def ssl_rejection(host: str = "192.168.10.101") -> aiohttp.ClientSSLError:
@@ -612,9 +618,12 @@ class FakeProxmox:
         self.routes = default_routes() if routes is None else routes
         self.calls: list[tuple[str, str, dict | None, dict | None]] = []
         # Hosts that refuse every connection, for the failover tests. The
-        # host is read off the API object, so the same table serves every
+        # host is read off the request, so the same table serves every
         # node of the pretend cluster.
         self.dead_hosts: set[str] = set()
+        # Hosts that take a request and never answer it: what is left of a
+        # node that was switched off while the connection stood.
+        self.silent_hosts: set[str] = set()
         self.hosts_seen: list[str] = []
         # Raised on the next POST, for tests of a refused command.
         self.post_error: Exception | None = None
@@ -627,12 +636,16 @@ class FakeProxmox:
         json_data: dict | None = None,
         params: dict | None = None,
         timeout: float | None = None,  # noqa: ASYNC109 - the library's own
+        *,
+        base_url: str | None = None,
     ) -> Any:
         """
         Answer one request the way the real API would, or refuse it.
 
         `timeout` is what the library passes for the short probes that ask
-        a host whether it is there; the fake answers either way.
+        a host whether it is there; the fake answers either way. `base_url`
+        comes with a probe of another host: the library asks it by its own
+        address and stays where it is, so the answer is that host's.
 
         What it raises is turned into what the library's own single
         attempt raises: aiohttp errors become ProxmoxConnectionError and
@@ -640,9 +653,11 @@ class FakeProxmox:
         ProxmoxNodeUnreachableError. A route table can keep spelling them
         the way the API answers.
         """
-        with _translate_client_errors(proxmox.base_url):
+        url = base_url or proxmox.base_url
+        host = proxmox.host if base_url is None else _host_of(base_url)
+        with _translate_client_errors(url):
             try:
-                return self._answer(proxmox, method, path, json_data, params)
+                return self._answer(host, method, path, json_data, params)
             except ProxmoxAPIError as error:
                 translated = _as_the_library_raises(error)
                 if translated is error:
@@ -651,17 +666,18 @@ class FakeProxmox:
 
     def _answer(
         self,
-        proxmox: ProxmoxVE,
+        host: str,
         method: str,
         path: str,
         json_data: dict | None,
         params: dict | None,
     ) -> Any:
-        """Return the route's answer, or raise it."""
-        host = proxmox.host
+        """Return the route's answer to a request sent to `host`, or raise it."""
         self.hosts_seen.append(host)
         if host in self.dead_hosts:
             raise connection_refused(host)
+        if host in self.silent_hosts:
+            raise TimeoutError
         self.calls.append((method, path, json_data, params))
         if method != "GET":
             if self.post_error is not None:
