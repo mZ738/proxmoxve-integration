@@ -66,6 +66,8 @@ Every node, VM and container has a `Status` sensor. They are proper enum sensors
 
 A state this integration has never heard of reads as unknown rather than breaking the sensor, so a future QEMU release cannot take the entity down.
 
+The uptime of a node, VM or container is there as **Last boot**: a timestamp sensor holding when it started, which Home Assistant shows as "3 days ago" and which an automation can compare against. It moves only on a real restart.
+
 ### Node figures
 
 Beyond CPU, memory, swap and disk, each node reports:
