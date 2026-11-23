@@ -15,8 +15,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.proxmoxve.api import ProxmoxClient, post_api_command
-from custom_components.proxmoxve.const import (
+from custom_components.proxmoxve_custom.api import ProxmoxClient, post_api_command
+from custom_components.proxmoxve_custom.const import (
     CONF_CLUSTER_HOSTS,
     CONF_TOKEN_NAME,
     COORDINATORS,
@@ -24,7 +24,7 @@ from custom_components.proxmoxve.const import (
     ProxmoxCommand,
     ProxmoxType,
 )
-from custom_components.proxmoxve.coordinator import shared_resources
+from custom_components.proxmoxve_custom.coordinator import shared_resources
 
 from .fake_api import (
     NODE,

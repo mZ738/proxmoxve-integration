@@ -11,13 +11,12 @@ from homeassistant.const import (
 )
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.proxmoxve import DOMAIN
-from custom_components.proxmoxve.const import (
+from custom_components.proxmoxve_custom import DOMAIN
+from custom_components.proxmoxve_custom.const import (
     CONF_CONTAINERS,
     CONF_DISKS_ENABLE,
     CONF_ENTITY_ID_SCHEME,
     CONF_LXC,
-    CONF_NODE,
     CONF_NODES,
     CONF_QEMU,
     CONF_REALM,
@@ -37,7 +36,7 @@ USER_INPUT_OK = {
     CONF_QEMU: ["101"],
     CONF_LXC: ["100"],
 }
-# A config entry in the current format (version 7): what the config flow
+# A config entry in the current format: what the config flow
 # stores today, tracking the node, the VM, the container and one storage.
 CURRENT_ENTRY_DATA = {
     CONF_HOST: "192.168.10.101",
@@ -52,57 +51,8 @@ CURRENT_ENTRY_DATA = {
     CONF_LXC: ["100"],
     CONF_STORAGE: ["storage/pve/local"],
 }
-CURRENT_ENTRY_VERSION = 7
+CURRENT_ENTRY_VERSION = 1
 
-YAML_INPUT_OK = {
-    "proxmoxve": {
-        CONF_HOST: "192.168.10.101",
-        CONF_PORT: 8006,
-        CONF_USERNAME: "root",
-        CONF_PASSWORD: "secret",
-        CONF_REALM: "pam",
-        CONF_VERIFY_SSL: True,
-        CONF_NODES: [
-            {
-                CONF_NODE: "pve",
-                CONF_VMS: ["100", "101", "102"],
-                CONF_CONTAINERS: ["201", "202", "203"],
-            }
-        ],
-    }
-}
-YAML_INPUT_INVALID = {
-    "proxmoxve": {
-        CONF_HOST: "test_host",
-        CONF_USERNAME: "user_test",
-        CONF_PASSWORD: "passw_test",
-        "error": "error",
-        CONF_NODES: [
-            {
-                CONF_NODE: "pve",
-                CONF_VMS: ["100", "101", "102"],
-                CONF_CONTAINERS: ["201", "202", "203"],
-            }
-        ],
-    }
-}
-YAML_INPUT_NOT_EXIST = {
-    "proxmoxve": {
-        CONF_HOST: "192.168.10.152",
-        CONF_PORT: 8006,
-        CONF_USERNAME: "root",
-        CONF_PASSWORD: "secret",
-        CONF_REALM: "pam",
-        CONF_VERIFY_SSL: True,
-        CONF_NODES: [
-            {
-                CONF_NODE: "not_exist",
-                CONF_VMS: ["100", "101", "102"],
-                CONF_CONTAINERS: ["201", "202", "203"],
-            }
-        ],
-    }
-}
 USER_INPUT_USER_HOST = {
     CONF_HOST: "192.168.10.101",
     CONF_PORT: 8006,

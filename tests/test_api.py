@@ -13,8 +13,8 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import issue_registry as ir
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.proxmoxve import DOMAIN
-from custom_components.proxmoxve.api import (
+from custom_components.proxmoxve_custom import DOMAIN
+from custom_components.proxmoxve_custom.api import (
     SNAPSHOT_NAME_MAX_LENGTH,
     ProxmoxClient,
     auth_error_status,
@@ -24,7 +24,7 @@ from custom_components.proxmoxve.api import (
     snapshot_name,
     token_name_only,
 )
-from custom_components.proxmoxve.const import ProxmoxCommand, ProxmoxType
+from custom_components.proxmoxve_custom.const import ProxmoxCommand, ProxmoxType
 
 from .const import USER_INPUT_OK, mock_config_entry
 from .fake_api import api_error

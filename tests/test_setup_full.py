@@ -18,8 +18,8 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import issue_registry as ir
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.proxmoxve import DOMAIN
-from custom_components.proxmoxve.const import (
+from custom_components.proxmoxve_custom import DOMAIN
+from custom_components.proxmoxve_custom.const import (
     CONF_LXC,
     CONF_NODES,
     CONF_QEMU,

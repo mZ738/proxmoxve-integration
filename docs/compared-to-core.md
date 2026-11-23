@@ -2,7 +2,7 @@
 
 # Compared with the core integration
 
-Home Assistant ships its own [Proxmox VE integration](https://www.home-assistant.io/integrations/proxmoxve/). This one grew out of it and replaces it when installed, so the fair question is what you get for the extra install. The table is taken from the core integration's source as of **Home Assistant 2026.11** and from this integration's current release; the core integration is being worked on again, so check its documentation if the column looks out of date.
+Home Assistant ships its own [Proxmox VE integration](https://www.home-assistant.io/integrations/proxmoxve/). This one grew out of it and has a domain of its own since 6.0, `proxmoxve_custom`, so the two can be set up side by side and the fair question is what you get for the extra install. The table is taken from the core integration's source as of **Home Assistant 2026.11** and from this integration's current release; the core integration is being worked on again, so check its documentation if the column looks out of date.
 
 Everything the core integration reads or does is here as well, so switching does not take anything away; entity ids differ, so automations built on the core integration need pointing at the new ones.
 
@@ -88,7 +88,7 @@ Legend: ✅ available · ➖ not available · text where it differs.
 | VM: start, stop, shutdown, reboot, pause, hibernate, resume, reset, snapshot | ✅ | ✅ |
 | Container: start, stop, reboot, snapshot | ✅ | ✅ — plus shutdown and unlock |
 | Back up now, per guest | ➖ | ✅ with a [backup storage picked](actions.md#backup-buttons) |
-| `proxmoxve.backup` action — guests, nodes or the cluster as target, vzdump's options | ➖ | ✅ |
+| `proxmoxve_custom.backup` action — guests, nodes or the cluster as target, vzdump's options | ➖ | ✅ |
 | Blueprint for a scheduled backup | ➖ | ✅ ([blueprints](https://github.com/dougiteixeira/proxmoxve/blob/main/blueprints/readme.md)) |
 
 ## Where the core integration is the better fit

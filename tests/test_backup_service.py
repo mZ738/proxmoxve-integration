@@ -3,18 +3,22 @@
 """Tests for starting a backup from Home Assistant, and seeing it run."""
 
 import pytest
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.proxmoxve import DOMAIN
-from custom_components.proxmoxve.const import CONF_BACKUP_STORAGE
-from custom_components.proxmoxve.coordinator import parse_backup, parse_running_backup
-from custom_components.proxmoxve.services import (
+from custom_components.proxmoxve_custom import DOMAIN
+from custom_components.proxmoxve_custom.const import CONF_BACKUP_STORAGE
+from custom_components.proxmoxve_custom.coordinator import (
+    parse_backup,
+    parse_running_backup,
+)
+from custom_components.proxmoxve_custom.services import (
     SERVICE_BACKUP,
     BackupPlan,
+    async_register_services,
     vzdump_parameters,
 )
 
@@ -116,8 +120,37 @@ def test_the_backup_data_carries_the_run_in_progress() -> None:
     assert data.running_guests == "101"
 
 
+async def test_the_legacy_alias_is_not_registered(
+    hass: HomeAssistant,
+    fake_api: FakeProxmox,
+    current_entry: MockConfigEntry,
+) -> None:
+    """The integration registers only the current backup action."""
+    await _setup(hass, current_entry)
+
+    assert hass.services.has_service(DOMAIN, SERVICE_BACKUP)
+    assert not hass.services.has_service("proxmoxve", SERVICE_BACKUP)
+
+
+async def test_existing_legacy_service_is_not_overwritten(hass: HomeAssistant) -> None:
+    """Leave a service registered by another integration untouched."""
+    calls: list[ServiceCall] = []
+
+    @callback
+    def handle_backup(call: ServiceCall) -> None:
+        calls.append(call)
+
+    hass.services.async_register("proxmoxve", SERVICE_BACKUP, handle_backup)
+    async_register_services(hass)
+
+    await hass.services.async_call("proxmoxve", SERVICE_BACKUP, blocking=True)
+    assert len(calls) == 1
+
+
 async def test_the_service_starts_a_backup_and_returns_the_task(
-    hass: HomeAssistant, fake_api: FakeProxmox, current_entry: MockConfigEntry
+    hass: HomeAssistant,
+    fake_api: FakeProxmox,
+    current_entry: MockConfigEntry,
 ) -> None:
     """Test the call posts to vzdump with the parameters and hands back the UPID."""
     await _setup(hass, current_entry)

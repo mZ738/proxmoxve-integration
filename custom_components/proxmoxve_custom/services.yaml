@@ -1,7 +1,7 @@
 backup:
   target:
     entity:
-      integration: proxmoxve
+      integration: proxmoxve_custom
   fields:
     node:
       example: "pve"
