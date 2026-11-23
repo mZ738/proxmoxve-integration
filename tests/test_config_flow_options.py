@@ -11,8 +11,6 @@ from homeassistant.config_entries import (
 from homeassistant.const import (
     CONF_BASE,
     CONF_HOST,
-    CONF_PASSWORD,
-    CONF_PORT,
     CONF_USERNAME,
     CONF_VERIFY_SSL,
 )
@@ -20,9 +18,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.proxmoxve import DOMAIN
-from custom_components.proxmoxve.config_flow import ProxmoxOptionsFlowHandler
-from custom_components.proxmoxve.const import (
+from custom_components.proxmoxve_custom import DOMAIN
+from custom_components.proxmoxve_custom.config_flow import ProxmoxOptionsFlowHandler
+from custom_components.proxmoxve_custom.const import (
     CONF_AUTO_DISCOVERY,
     CONF_DISKS_ENABLE,
     CONF_ENTITY_ID_PREFIX,
@@ -30,7 +28,6 @@ from custom_components.proxmoxve.const import (
     CONF_LXC,
     CONF_NODES,
     CONF_QEMU,
-    CONF_REALM,
     CONF_STORAGE,
     CONF_UPDATE_INTERVAL,
     CONF_UPDATES_ENABLE,
@@ -43,15 +40,12 @@ from .const import (
     MOCK_GET_RESPONSE,
     OPTIONS_INPUT_SELECTION,
     USER_INPUT_OPTION_AUTH,
-    mock_config_entry,
 )
 from .fake_api import NODE, FakeProxmox, ssl_rejection
 
 
 async def test_options_flow_host_auth(hass: HomeAssistant) -> None:
     """Test options config flow."""
-    # A current entry: an older one would be migrated first, and the disk
-    # identifier migrations reach for the API, which this test does not mock.
     entry = MockConfigEntry(
         domain=DOMAIN,
         title="Test",
@@ -79,7 +73,7 @@ async def test_options_flow_host_auth(hass: HomeAssistant) -> None:
         assert result["step_id"] == "host_auth"
 
         with patch(
-            "custom_components.proxmoxve.ProxmoxClient.build_client",
+            "custom_components.proxmoxve_custom.ProxmoxClient.build_client",
             side_effect=ProxmoxAuthError("mock msg"),
             return_value=None,
         ):
@@ -91,7 +85,7 @@ async def test_options_flow_host_auth(hass: HomeAssistant) -> None:
             assert result_auth_error["errors"][CONF_USERNAME] == "auth_error"
 
         with patch(
-            "custom_components.proxmoxve.ProxmoxClient.build_client",
+            "custom_components.proxmoxve_custom.ProxmoxClient.build_client",
             side_effect=ssl_rejection(),
             return_value=None,
         ):
@@ -107,7 +101,7 @@ async def test_options_flow_host_auth(hass: HomeAssistant) -> None:
             )
 
         with patch(
-            "custom_components.proxmoxve.ProxmoxClient.build_client",
+            "custom_components.proxmoxve_custom.ProxmoxClient.build_client",
             side_effect=TimeoutError,
             return_value=None,
         ):
@@ -121,7 +115,7 @@ async def test_options_flow_host_auth(hass: HomeAssistant) -> None:
             assert result_auth_cant_connect["errors"][CONF_HOST] == "cant_connect"
 
         with patch(
-            "custom_components.proxmoxve.ProxmoxClient.build_client",
+            "custom_components.proxmoxve_custom.ProxmoxClient.build_client",
             side_effect=Exception,
             return_value=None,
         ):
@@ -153,16 +147,14 @@ async def test_options_flow_host_auth(hass: HomeAssistant) -> None:
             assert entry.data[CONF_USERNAME] == USER_INPUT_OPTION_AUTH[CONF_USERNAME]
 
 
-async def test_options_flow_change_expose(hass: HomeAssistant) -> None:
+async def test_options_flow_change_expose(
+    hass: HomeAssistant, fake_api: FakeProxmox
+) -> None:
     """Test options config flow."""
-    with (
-        patch("aioproxmox.ProxmoxVE.request", return_value=MOCK_GET_RESPONSE),
-        patch(
-            "aioproxmox.ProxmoxHTTPAuth._get_new_tokens",
-            return_value=None,
-        ),
-    ):
-        await async_init_integration(hass, mock_config_entry)
+    mock_config_entry = MockConfigEntry(
+        domain=DOMAIN, title="Test", data=CURRENT_ENTRY_DATA
+    )
+    await async_init_integration(hass, mock_config_entry)
 
     assert mock_config_entry.state is ConfigEntryState.LOADED
 
@@ -205,31 +197,16 @@ async def test_options_flow_change_expose(hass: HomeAssistant) -> None:
             assert result["reason"] == "changes_successful"
 
 
-async def test_options_flow_change_expose_auth_error(hass: HomeAssistant) -> None:
+async def test_options_flow_change_expose_auth_error(
+    hass: HomeAssistant, fake_api: FakeProxmox
+) -> None:
     """Test options config flow."""
     mock_config_entry = MockConfigEntry(
         domain=DOMAIN,
         title="Test",
-        data={
-            CONF_HOST: "192.168.10.102",
-            CONF_PORT: 8006,
-            CONF_USERNAME: "root",
-            CONF_PASSWORD: "secret",
-            CONF_REALM: "pam",
-            CONF_VERIFY_SSL: True,
-            CONF_NODES: ["pve"],
-            CONF_QEMU: ["101"],
-            CONF_LXC: ["100"],
-        },
+        data={**CURRENT_ENTRY_DATA, CONF_HOST: "192.168.10.102"},
     )
-    with (
-        patch("aioproxmox.ProxmoxVE.request", return_value=MOCK_GET_RESPONSE),
-        patch(
-            "aioproxmox.ProxmoxHTTPAuth._get_new_tokens",
-            return_value=None,
-        ),
-    ):
-        await async_init_integration(hass, mock_config_entry)
+    await async_init_integration(hass, mock_config_entry)
 
     assert mock_config_entry.state is ConfigEntryState.LOADED
 
@@ -249,7 +226,7 @@ async def test_options_flow_change_expose_auth_error(hass: HomeAssistant) -> Non
         assert result["step_id"] == "menu"
 
         with patch(
-            "custom_components.proxmoxve.ProxmoxClient.build_client",
+            "custom_components.proxmoxve_custom.ProxmoxClient.build_client",
             side_effect=ProxmoxAuthError("mock msg"),
             return_value=None,
         ):
@@ -262,31 +239,16 @@ async def test_options_flow_change_expose_auth_error(hass: HomeAssistant) -> Non
             assert result["reason"] == "auth_error"
 
 
-async def test_options_flow_change_expose_ssl_rejection(hass: HomeAssistant) -> None:
+async def test_options_flow_change_expose_ssl_rejection(
+    hass: HomeAssistant, fake_api: FakeProxmox
+) -> None:
     """Test options config flow."""
     mock_config_entry = MockConfigEntry(
         domain=DOMAIN,
         title="Test",
-        data={
-            CONF_HOST: "192.168.10.103",
-            CONF_PORT: 8006,
-            CONF_USERNAME: "root",
-            CONF_PASSWORD: "secret",
-            CONF_REALM: "pam",
-            CONF_VERIFY_SSL: True,
-            CONF_NODES: ["pve"],
-            CONF_QEMU: ["101"],
-            CONF_LXC: ["100"],
-        },
+        data={**CURRENT_ENTRY_DATA, CONF_HOST: "192.168.10.103"},
     )
-    with (
-        patch("aioproxmox.ProxmoxVE.request", return_value=MOCK_GET_RESPONSE),
-        patch(
-            "aioproxmox.ProxmoxHTTPAuth._get_new_tokens",
-            return_value=None,
-        ),
-    ):
-        await async_init_integration(hass, mock_config_entry)
+    await async_init_integration(hass, mock_config_entry)
 
     assert mock_config_entry.state is ConfigEntryState.LOADED
 
@@ -306,7 +268,7 @@ async def test_options_flow_change_expose_ssl_rejection(hass: HomeAssistant) -> 
         assert result["step_id"] == "menu"
 
         with patch(
-            "custom_components.proxmoxve.ProxmoxClient.build_client",
+            "custom_components.proxmoxve_custom.ProxmoxClient.build_client",
             side_effect=ssl_rejection(),
             return_value=None,
         ):
@@ -319,31 +281,16 @@ async def test_options_flow_change_expose_ssl_rejection(hass: HomeAssistant) -> 
             assert result["reason"] == "ssl_rejection"
 
 
-async def test_options_flow_change_expose_cant_connect(hass: HomeAssistant) -> None:
+async def test_options_flow_change_expose_cant_connect(
+    hass: HomeAssistant, fake_api: FakeProxmox
+) -> None:
     """Test options config flow."""
     mock_config_entry = MockConfigEntry(
         domain=DOMAIN,
         title="Test",
-        data={
-            CONF_HOST: "192.168.10.104",
-            CONF_PORT: 8006,
-            CONF_USERNAME: "root",
-            CONF_PASSWORD: "secret",
-            CONF_REALM: "pam",
-            CONF_VERIFY_SSL: True,
-            CONF_NODES: ["pve"],
-            CONF_QEMU: ["101"],
-            CONF_LXC: ["100"],
-        },
+        data={**CURRENT_ENTRY_DATA, CONF_HOST: "192.168.10.104"},
     )
-    with (
-        patch("aioproxmox.ProxmoxVE.request", return_value=MOCK_GET_RESPONSE),
-        patch(
-            "aioproxmox.ProxmoxHTTPAuth._get_new_tokens",
-            return_value=None,
-        ),
-    ):
-        await async_init_integration(hass, mock_config_entry)
+    await async_init_integration(hass, mock_config_entry)
 
     assert mock_config_entry.state is ConfigEntryState.LOADED
 
@@ -363,7 +310,7 @@ async def test_options_flow_change_expose_cant_connect(hass: HomeAssistant) -> N
         assert result["step_id"] == "menu"
 
         with patch(
-            "custom_components.proxmoxve.ProxmoxClient.build_client",
+            "custom_components.proxmoxve_custom.ProxmoxClient.build_client",
             side_effect=TimeoutError,
             return_value=None,
         ):
@@ -376,31 +323,16 @@ async def test_options_flow_change_expose_cant_connect(hass: HomeAssistant) -> N
             assert result["reason"] == "cant_connect"
 
 
-async def test_options_flow_change_expose_general_error(hass: HomeAssistant) -> None:
+async def test_options_flow_change_expose_general_error(
+    hass: HomeAssistant, fake_api: FakeProxmox
+) -> None:
     """Test options config flow."""
     mock_config_entry = MockConfigEntry(
         domain=DOMAIN,
         title="Test",
-        data={
-            CONF_HOST: "192.168.10.105",
-            CONF_PORT: 8006,
-            CONF_USERNAME: "root",
-            CONF_PASSWORD: "secret",
-            CONF_REALM: "pam",
-            CONF_VERIFY_SSL: True,
-            CONF_NODES: ["pve"],
-            CONF_QEMU: ["101"],
-            CONF_LXC: ["100"],
-        },
+        data={**CURRENT_ENTRY_DATA, CONF_HOST: "192.168.10.105"},
     )
-    with (
-        patch("aioproxmox.ProxmoxVE.request", return_value=MOCK_GET_RESPONSE),
-        patch(
-            "aioproxmox.ProxmoxHTTPAuth._get_new_tokens",
-            return_value=None,
-        ),
-    ):
-        await async_init_integration(hass, mock_config_entry)
+    await async_init_integration(hass, mock_config_entry)
 
     assert mock_config_entry.state is ConfigEntryState.LOADED
 
@@ -420,7 +352,7 @@ async def test_options_flow_change_expose_general_error(hass: HomeAssistant) -> 
         assert result["step_id"] == "menu"
 
         with patch(
-            "custom_components.proxmoxve.ProxmoxClient.build_client",
+            "custom_components.proxmoxve_custom.ProxmoxClient.build_client",
             side_effect=Exception,
             return_value=None,
         ):

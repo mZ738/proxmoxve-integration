@@ -18,8 +18,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.proxmoxve import DOMAIN
-from custom_components.proxmoxve.const import (
+from custom_components.proxmoxve_custom import DOMAIN
+from custom_components.proxmoxve_custom.const import (
     CONF_AUTO_DISCOVERY,
     CONF_DISKS_ENABLE,
     CONF_ENTITY_ID_PREFIX,
@@ -139,7 +139,7 @@ async def test_flow_port_big(hass: HomeAssistant) -> None:
 async def test_flow_auth_error(hass: HomeAssistant) -> None:
     """Test errors in case username or password are incorrect."""
     with patch(
-        "custom_components.proxmoxve.ProxmoxClient.build_client",
+        "custom_components.proxmoxve_custom.ProxmoxClient.build_client",
         side_effect=ProxmoxAuthError("mock msg"),
         return_value=None,
     ):
@@ -154,7 +154,7 @@ async def test_flow_auth_error(hass: HomeAssistant) -> None:
 async def test_flow_cant_connect(hass: HomeAssistant) -> None:
     """Test errors in case the connection fails."""
     with patch(
-        "custom_components.proxmoxve.ProxmoxClient.build_client",
+        "custom_components.proxmoxve_custom.ProxmoxClient.build_client",
         side_effect=TimeoutError,
         return_value=None,
     ):
@@ -169,7 +169,7 @@ async def test_flow_cant_connect(hass: HomeAssistant) -> None:
 async def test_flow_ssl_error(hass: HomeAssistant) -> None:
     """Test errors in case the SSL certificare is not present or is not valid or is expired."""
     with patch(
-        "custom_components.proxmoxve.ProxmoxClient.build_client",
+        "custom_components.proxmoxve_custom.ProxmoxClient.build_client",
         side_effect=ssl_rejection(),
         return_value=None,
     ):
@@ -184,7 +184,7 @@ async def test_flow_ssl_error(hass: HomeAssistant) -> None:
 async def test_flow_unknown_exception(hass: HomeAssistant) -> None:
     """Test errors in case of an unknown exception occurs."""
     with patch(
-        "custom_components.proxmoxve.ProxmoxClient.build_client",
+        "custom_components.proxmoxve_custom.ProxmoxClient.build_client",
         side_effect=Exception,
         return_value=None,
     ):

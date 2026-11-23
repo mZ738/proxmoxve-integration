@@ -12,10 +12,10 @@ from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.update_coordinator import UpdateFailed
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.proxmoxve import DOMAIN
-from custom_components.proxmoxve.api import ProxmoxClient
-from custom_components.proxmoxve.const import COORDINATORS, ProxmoxType
-from custom_components.proxmoxve.coordinator import poll_api
+from custom_components.proxmoxve_custom import DOMAIN
+from custom_components.proxmoxve_custom.api import ProxmoxClient
+from custom_components.proxmoxve_custom.const import COORDINATORS, ProxmoxType
+from custom_components.proxmoxve_custom.coordinator import poll_api
 
 from .const import USER_INPUT_OK
 from .fake_api import NODE, Answers, FakeProxmox, api_error, connection_refused

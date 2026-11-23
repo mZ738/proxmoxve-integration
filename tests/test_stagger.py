@@ -20,9 +20,9 @@ from pytest_homeassistant_custom_component.common import (
     async_fire_time_changed,
 )
 
-from custom_components.proxmoxve.const import COORDINATORS, DOMAIN
-from custom_components.proxmoxve.coordinator import RESOURCES_TTL
-from custom_components.proxmoxve.stagger import (
+from custom_components.proxmoxve_custom.const import COORDINATORS, DOMAIN
+from custom_components.proxmoxve_custom.coordinator import RESOURCES_TTL
+from custom_components.proxmoxve_custom.stagger import (
     MAX_STAGGERED_SECONDS,
     STAGGER_START,
     STAGGER_WINDOW,

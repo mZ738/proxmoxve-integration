@@ -3,7 +3,7 @@
 """
 Actions the integration offers beyond its buttons.
 
-`proxmoxve.backup` starts `vzdump` runs the way the Proxmox interface's
+`proxmoxve_custom.backup` starts `vzdump` runs the way the Proxmox interface's
 Backup Now does: one API call per node, the node does the rest, and the
 run shows up in the task log where the backup sensors already look. What
 to back up is said the Home Assistant way - the guest, node or cluster
@@ -381,12 +381,11 @@ async def _async_backup(call: ServiceCall) -> ServiceResponse:
 
 def async_register_services(hass: HomeAssistant) -> None:
     """Register the integration's actions, once per Home Assistant."""
-    if hass.services.has_service(DOMAIN, SERVICE_BACKUP):
-        return
-    hass.services.async_register(
-        DOMAIN,
-        SERVICE_BACKUP,
-        _async_backup,
-        schema=BACKUP_SCHEMA,
-        supports_response=SupportsResponse.OPTIONAL,
-    )
+    if not hass.services.has_service(DOMAIN, SERVICE_BACKUP):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_BACKUP,
+            _async_backup,
+            schema=BACKUP_SCHEMA,
+            supports_response=SupportsResponse.OPTIONAL,
+        )

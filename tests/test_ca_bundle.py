@@ -17,13 +17,13 @@ from homeassistant.config_entries import SOURCE_USER, ConfigEntryState
 from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.proxmoxve import DOMAIN
-from custom_components.proxmoxve.api import (
+from custom_components.proxmoxve_custom import DOMAIN
+from custom_components.proxmoxve_custom.api import (
     CABundleError,
     ProxmoxClient,
     build_verifying_context,
 )
-from custom_components.proxmoxve.const import CONF_CA_BUNDLE
+from custom_components.proxmoxve_custom.const import CONF_CA_BUNDLE
 
 from .const import (
     CURRENT_ENTRY_DATA,

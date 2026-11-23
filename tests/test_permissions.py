@@ -6,14 +6,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.core import HomeAssistant
 
-from custom_components.proxmoxve.button import (
+from custom_components.proxmoxve_custom.button import (
     PROXMOX_BUTTON_CLUSTER,
     PROXMOX_BUTTON_NODE,
     PROXMOX_BUTTON_VM,
     button_permitted,
 )
-from custom_components.proxmoxve.const import ProxmoxCommand, ProxmoxType
-from custom_components.proxmoxve.permissions import (
+from custom_components.proxmoxve_custom.const import ProxmoxCommand, ProxmoxType
+from custom_components.proxmoxve_custom.permissions import (
     ProxmoxPrivilege,
     async_fetch_permissions,
     is_granted,
@@ -151,5 +151,5 @@ async def test_fetch_permissions_with_an_unexpected_answer(
     proxmox = MagicMock()
     proxmox.request = AsyncMock(return_value=[{"vmid": 100}])
 
-    with patch("custom_components.proxmoxve.permissions.LOGGER"):
+    with patch("custom_components.proxmoxve_custom.permissions.LOGGER"):
         assert await async_fetch_permissions(hass, proxmox) is None
