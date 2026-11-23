@@ -65,7 +65,7 @@ Have [HACS](https://hacs.xyz/) installed, this will allow you to update easily.
 
 **Manual installation**
 
-* Copy the `proxmoxve_custom` folder from the repository to the [`custom_components` folder](https://developers.home-assistant.io/docs/creating_integration_file_structure/#where-home-assistant-looks-for-integrations) in your config directory. For an existing installation, see [Upgrading from `proxmoxve`](#upgrading-from-proxmoxve).
+* Copy the `proxmoxve_custom` folder from the repository to the [`custom_components` folder](https://developers.home-assistant.io/docs/creating_integration_file_structure/#where-home-assistant-looks-for-integrations) in your config directory. For an existing installation, see [Updating the domain](#updating-the-domain-from-proxmoxve-to-proxmoxve_custom).
 * Restart the Home Assistant.
 
 ## Configuration
