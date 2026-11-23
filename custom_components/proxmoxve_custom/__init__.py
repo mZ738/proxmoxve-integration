@@ -785,7 +785,9 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
     if ha_admin_user and ha_admin_password:
         candidate_client = ProxmoxClient(
             hass,
-            host=host,
+            # The node the primary client ended up on, and the same places
+            # to go from there - the configured host may be the one down.
+            host=proxmox_client.host,
             port=port,
             user=ha_admin_user,
             token_name=config_entry.data.get(CONF_HA_ADMIN_TOKEN_NAME, ""),
@@ -793,6 +795,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
             password=ha_admin_password,
             verify_ssl=verify_ssl,
             ca_bundle=ca_bundle,
+            fallback_hosts=proxmox_client.hosts,
         )
         try:
             await candidate_client.build_client()
