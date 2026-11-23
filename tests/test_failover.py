@@ -18,9 +18,14 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.proxmoxve_custom.api import ProxmoxClient, post_api_command
 from custom_components.proxmoxve_custom.const import (
     CONF_CLUSTER_HOSTS,
+    CONF_HA_ADMIN_PASSWORD,
+    CONF_HA_ADMIN_REALM,
+    CONF_HA_ADMIN_TOKEN_NAME,
+    CONF_HA_ADMIN_USERNAME,
     CONF_TOKEN_NAME,
     COORDINATORS,
     PROXMOX_CLIENT,
+    PROXMOX_HA_ADMIN_CLIENT,
     ProxmoxCommand,
     ProxmoxType,
 )
@@ -584,3 +589,66 @@ async def test_a_node_that_is_off_is_left_alone_from_the_first_refresh(
     # The node listing is cluster-wide and answered by the host itself;
     # everything addressed to the node that is off was skipped.
     assert not [path for path in fake_api.paths() if path.startswith(f"nodes/{NODE}/")]
+
+
+async def test_the_ha_admin_credentials_start_where_the_entry_ended_up(
+    hass: HomeAssistant, fake_api: FakeProxmox, current_entry: MockConfigEntry
+) -> None:
+    """
+    Test a start with the host down keeps the HA buttons and sensors.
+
+    The second set of credentials logs in on its own. Sent to the
+    configured host with nowhere else to go, it failed while the entry
+    itself had long moved on - and what it is for was missing until the
+    next reload.
+    """
+    hass.config_entries.async_update_entry(
+        current_entry,
+        data={
+            **current_entry.data,
+            CONF_CLUSTER_HOSTS: list(LEARNED),
+            CONF_HA_ADMIN_USERNAME: "root",
+            CONF_HA_ADMIN_TOKEN_NAME: "ha",
+            CONF_HA_ADMIN_PASSWORD: "admin-secret",
+            CONF_HA_ADMIN_REALM: "pam",
+        },
+    )
+    fake_api.dead_hosts.add(CONFIGURED)
+
+    await hass.config_entries.async_setup(current_entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert current_entry.state is ConfigEntryState.LOADED
+    admin: ProxmoxClient | None = current_entry.runtime_data[PROXMOX_HA_ADMIN_CLIENT]
+    assert admin is not None
+    assert admin.host == LEARNED[0]
+
+
+async def test_the_ha_admin_credentials_follow_when_the_host_goes(
+    hass: HomeAssistant, fake_api: FakeProxmox, current_entry: MockConfigEntry
+) -> None:
+    """Test the HA reads move to another node like everything else does."""
+    fake_api.routes["cluster/ha/status/current"] = []
+    hass.config_entries.async_update_entry(
+        current_entry,
+        data={
+            **current_entry.data,
+            CONF_HA_ADMIN_USERNAME: "root",
+            CONF_HA_ADMIN_TOKEN_NAME: "",
+            CONF_HA_ADMIN_PASSWORD: "admin-secret",
+            CONF_HA_ADMIN_REALM: "pam",
+        },
+    )
+    await hass.config_entries.async_setup(current_entry.entry_id)
+    await hass.async_block_till_done()
+    admin: ProxmoxClient = current_entry.runtime_data[PROXMOX_HA_ADMIN_CLIENT]
+    assert admin.hosts == (CONFIGURED, *LEARNED)
+    status = current_entry.runtime_data[COORDINATORS][
+        f"{ProxmoxType.Proxmox}_ha_status"
+    ]
+
+    fake_api.dead_hosts.add(CONFIGURED)
+    await status.async_refresh()
+
+    assert status.last_update_success
+    assert admin.host == LEARNED[0]

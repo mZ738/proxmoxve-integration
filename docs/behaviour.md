@@ -14,7 +14,7 @@ Because `cluster/resources` only lists what the credentials may audit, "everythi
 
 Every request goes through the one host you configured; its `pveproxy` forwards to the other nodes. Until now that host being down took the whole cluster out of Home Assistant, however many nodes were still running.
 
-The integration now asks `cluster/status` at setup what address every node answers on, and when the configured host stops answering it moves to the next node that does — logged as a warning — and keeps polling there. Nothing needs to be configured, and the configured host stays the one shown and the one every start goes to first.
+The integration now asks `cluster/status` at setup what address every node answers on, and when the configured host stops answering it moves to the next node that does — logged as a warning — and keeps polling there. Nothing needs to be configured, and the configured host stays the one shown and the one every start goes to first. The optional HA admin credentials log in on the node the integration ended up on and move the same way.
 
 Those addresses are kept in the config entry, so a restart while the configured node is down finds them: the very first request of a setup can then go to another node, and the entry loads instead of waiting for the node to come back. They are refreshed whenever the cluster can be asked, and a reload that cannot read `cluster/status` leaves the last ones standing. Like the host itself, they are redacted from the diagnostics download.
 
