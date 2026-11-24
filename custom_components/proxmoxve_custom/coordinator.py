@@ -34,6 +34,8 @@ from .const import (
     GUEST_FILE_READ_MAX_BYTES,
     LOGGER,
     SLOW_UPDATE_INTERVAL,
+    SMART_READS_PER_NODE,
+    SMART_UPDATE_INTERVAL,
     TASKS_UPDATE_INTERVAL,
     UPDATE_INTERVAL,
     UPDATE_INTERVAL_CHOICES,
@@ -1107,6 +1109,8 @@ class SharedResources:
         self.nodes_off: frozenset[str] = frozenset()
         # The disk and pool lists of the entry's nodes, by API path.
         self.node_lists: dict[str, SharedRead] = {}
+        # What a node's drives queue for to read their SMART log, by node.
+        self.smart_slots: dict[str, asyncio.Semaphore] = {}
 
     async def get(
         self,
@@ -1196,6 +1200,19 @@ def shared_node_list(
     """Return the entry's shared read of a node's disk or pool list."""
     node_lists = shared_resources(hass, config_entry).node_lists
     return node_lists.setdefault(api_path, SharedRead())
+
+
+def smart_slots(
+    hass: HomeAssistant, config_entry: ConfigEntry, node: str
+) -> asyncio.Semaphore:
+    """
+    Return what the drives of a node queue for to read their SMART log.
+
+    Each read runs smartctl on the node. Seventeen of them at once is a
+    load of its own; one after the other is most of a minute.
+    """
+    slots = shared_resources(hass, config_entry).smart_slots
+    return slots.setdefault(node, asyncio.Semaphore(SMART_READS_PER_NODE))
 
 
 async def read_node_list(
@@ -2955,6 +2972,42 @@ class ProxmoxDiskCoordinator(ProxmoxCoordinator):
         self.proxmox = proxmox
         self.node_name = node_name
         self.resource_id = disk_id
+        # The last SMART log read, which drive it was read from, and when.
+        self._smart: Any = None
+        self._smart_path: str | None = None
+        self._smart_at: float = -SMART_UPDATE_INTERVAL
+
+    async def _read_smart(self, devpath: str) -> Any:
+        """
+        Return the drive's SMART log, read afresh every five minutes.
+
+        Proxmox runs smartctl for each read - seconds per drive, and a node
+        with seventeen drives spent most of a minute on them every poll.
+        A read that failed or was refused is not kept: the next poll asks
+        again, as it did before.
+        """
+        if (
+            devpath == self._smart_path
+            and time.monotonic() - self._smart_at < SMART_UPDATE_INTERVAL
+        ):
+            return self._smart
+        api_path = f"nodes/{self.node_name}/disks/smart?disk={devpath}"
+        try:
+            async with smart_slots(self.hass, self.config_entry, self.node_name):
+                smart = await poll_api(
+                    self.hass,
+                    self.config_entry,
+                    self.proxmox,
+                    api_path,
+                    ProxmoxType.Disk,
+                    self.resource_id,
+                )
+        except UpdateFailed:
+            return None
+        if smart is not None:
+            self._smart, self._smart_path = smart, devpath
+            self._smart_at = time.monotonic()
+        return smart
 
     async def _async_update_data(self) -> ProxmoxDiskData:
         """Update data  for Proxmox Disk."""
@@ -2997,18 +3050,7 @@ class ProxmoxDiskCoordinator(ProxmoxCoordinator):
 
         for disk in api_status:
             if disk_matches_id(disk, self.resource_id):
-                api_path = f"nodes/{self.node_name}/disks/smart?disk={disk['devpath']}"
-                try:
-                    disk_attributes_api = await poll_api(
-                        self.hass,
-                        self.config_entry,
-                        self.proxmox,
-                        api_path,
-                        ProxmoxType.Disk,
-                        self.resource_id,
-                    )
-                except UpdateFailed:
-                    disk_attributes_api = None
+                disk_attributes_api = await self._read_smart(disk["devpath"])
 
                 attributes_json = []
                 if (
