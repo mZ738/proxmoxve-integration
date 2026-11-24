@@ -4,6 +4,8 @@
 
 Home Assistant ships its own [Proxmox VE integration](https://www.home-assistant.io/integrations/proxmoxve/). This one grew out of it and has a domain of its own since 6.0, `proxmoxve_custom`, so the two can be set up side by side and the fair question is what you get for the extra install. The table is taken from the core integration's source as of **Home Assistant 2026.11** and from this integration's current release; the core integration is being worked on again, so check its documentation if the column looks out of date.
 
+Both talk to Proxmox through the [aioproxmox](https://github.com/CoMPaTech/aioproxmox) library, and Home Assistant keeps one copy of it for every integration. This one needs 0.1.7 or newer, for logging in again and moving to another node; the core integration in Home Assistant 2026.12 asks for exactly 0.1.5. On 2026.12, set up only one of the two until core moves on: with both, each asks Home Assistant for its own version at start-up, and this one can end up on 0.1.5 without its fallback. Up to 2026.11 the core integration uses another library, and the two do not get in each other's way.
+
 Everything the core integration reads or does is here as well, so switching does not take anything away; entity ids differ, so automations built on the core integration need pointing at the new ones.
 
 Legend: ✅ available · ➖ not available · text where it differs.
