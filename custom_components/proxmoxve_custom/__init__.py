@@ -96,6 +96,7 @@ from .coordinator import (
     ProxmoxUpdateCoordinator,
     ProxmoxZFSCoordinator,
     forget_untracked_guest_agents,
+    read_node_list,
     shared_resources,
 )
 from .discovery import (
@@ -334,7 +335,9 @@ async def _async_setup_node(  # noqa: PLR0917
     node_is_off = node in shared_resources(hass, config_entry).nodes_off
     if config_entry.options.get(CONF_DISKS_ENABLE, True) and not node_is_off:
         try:
-            disks = await get_api(proxmox, f"nodes/{node}/disks/list")
+            disks = await read_node_list(
+                hass, config_entry, proxmox, f"nodes/{node}/disks/list"
+            )
         except REQUEST_ERRORS:
             return coordinator_node
 
@@ -355,7 +358,9 @@ async def _async_setup_node(  # noqa: PLR0917
         coordinators[f"{ProxmoxType.Disk}_{node}"] = coordinators_disk
 
         try:
-            pools = await get_api(proxmox, f"nodes/{node}/disks/zfs")
+            pools = await read_node_list(
+                hass, config_entry, proxmox, f"nodes/{node}/disks/zfs"
+            )
         except REQUEST_ERRORS as e:
             LOGGER.exception(e)
             return coordinator_node

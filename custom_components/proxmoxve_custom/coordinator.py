@@ -1034,6 +1034,55 @@ PVEPROXY_BUSY: Final = frozenset({596, 597})
 # data and for the pools - and a repair naming the node would send the
 # user round in circles.
 ROOT_CHECKED_READS: Final = ("/disks/smart", "/disks/zfs")
+# The two node reads that answer with a whole list where each coordinator
+# wants one row of it: every disk and every pool has a coordinator of its
+# own. Proxmox asks each drive for its health to build the disk list,
+# which takes seconds on a node with many of them.
+NODE_LIST_READS: Final = ("/disks/list", "/disks/zfs")
+
+
+class SharedRead:
+    """
+    One read of an API path per poll burst, shared by whoever needs it.
+
+    What `SharedResources` does for `cluster/resources`, for a list that
+    belongs to a node. The first caller of a burst reads; the others wait
+    for it and take the result. What the read raised is kept the same way
+    and raised for each of them, so every caller still deals with a
+    refusal or a dead host as if it had asked itself.
+    """
+
+    def __init__(self) -> None:
+        """Start with nothing read."""
+        self._lock = asyncio.Lock()
+        self._read_at: float = -RESOURCES_TTL
+        self._data: Any = None
+        self._error: Exception | None = None
+
+    async def get(
+        self, read: Callable[[], Awaitable[Any]], *, fresh: bool = False
+    ) -> Any:
+        """
+        Return what `read` answered, asked afresh when that is older than the TTL.
+
+        `fresh` reads regardless - for setup, which builds the coordinators
+        from the list; its read then serves their first refreshes.
+        """
+        async with self._lock:
+            if fresh or time.monotonic() - self._read_at >= RESOURCES_TTL:
+                try:
+                    self._data, self._error = await read(), None
+                except Exception as error:
+                    # Kept, and raised below for each caller.
+                    self._data, self._error = None, error
+                self._read_at = time.monotonic()
+        if self._error is not None:
+            raise self._error
+        return self._data
+
+    def forget(self) -> None:
+        """Make the next caller read again."""
+        self._read_at = -RESOURCES_TTL
 
 
 class SharedResources:
@@ -1056,6 +1105,8 @@ class SharedResources:
         self._failure: str | None = None
         # The nodes the cluster last reported as anything but online.
         self.nodes_off: frozenset[str] = frozenset()
+        # The disk and pool lists of the entry's nodes, by API path.
+        self.node_lists: dict[str, SharedRead] = {}
 
     async def get(
         self,
@@ -1113,6 +1164,8 @@ class SharedResources:
     def forget(self) -> None:
         """Make the next caller read again - after something changed the cluster."""
         self._read_at = -RESOURCES_TTL
+        for node_list in self.node_lists.values():
+            node_list.forget()
 
 
 def nodes_not_online(rows: list[dict[str, Any]] | None) -> frozenset[str]:
@@ -1135,6 +1188,34 @@ def shared_resources(hass: HomeAssistant, config_entry: ConfigEntry) -> SharedRe
     """Return the entry's shared resource read, creating it on first use."""
     store = hass.data.setdefault(DOMAIN, {}).setdefault(RESOURCES_CACHE, {})
     return store.setdefault(config_entry.entry_id, SharedResources())
+
+
+def shared_node_list(
+    hass: HomeAssistant, config_entry: ConfigEntry, api_path: str
+) -> SharedRead:
+    """Return the entry's shared read of a node's disk or pool list."""
+    node_lists = shared_resources(hass, config_entry).node_lists
+    return node_lists.setdefault(api_path, SharedRead())
+
+
+async def read_node_list(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    proxmox: ProxmoxVE,
+    api_path: str,
+) -> Any:
+    """
+    Read a node's disk or pool list for setup, and keep it for the coordinators.
+
+    Setup builds one coordinator per row and waits for the first refresh
+    of each, and each of them wants the list it was just built from. On a
+    node with eight disks that was nine reads of a list that takes seconds
+    to make, one after the other, with Home Assistant waiting for the
+    entry. Raises what `get_api` raises.
+    """
+    return await shared_node_list(hass, config_entry, api_path).get(
+        lambda: get_api(proxmox, api_path), fresh=True
+    )
 
 
 class ProxmoxCoordinator(
@@ -3235,16 +3316,26 @@ async def poll_api(  # noqa: PLR0917
         msg = f"Node {node} is offline"
         raise UpdateFailed(msg)
 
-    try:
+    async def read() -> Any:
+        """Ask the API, and once more where pveproxy was only busy."""
         try:
-            api_data = await get_api(proxmox, api_path)
+            return await get_api(proxmox, api_path)
         except ProxmoxAPIError as error:
             if error.status not in PVEPROXY_BUSY:
                 raise
             # One such moment used to take an entity out for a whole
             # polling interval; asked again, the node usually answers.
             LOGGER.debug("Read %s came back %s, asking once more", api_path, error)
-            api_data = await get_api(proxmox, api_path)
+            return await get_api(proxmox, api_path)
+
+    try:
+        if api_path.endswith(NODE_LIST_READS):
+            # Every disk and every pool of the node asks for this list.
+            # One of them reads, and what it got - or what it raised - is
+            # handled below for each of them as before.
+            api_data = await shared_node_list(hass, config_entry, api_path).get(read)
+        else:
+            api_data = await read()
     except ProxmoxAuthError as error:
         # The fresh login with the stored password was refused as well -
         # unless the API only said it is not issuing tickets yet.
