@@ -115,6 +115,23 @@ SCHEMA_CLUSTER_HA_AUTH: vol.Schema = vol.Schema(
 )
 
 
+class HostIsURLError(Exception):
+    """The Host field holds a URL, not a name or an address."""
+
+
+def refuse_url_as_host(host: Any) -> None:
+    """
+    Raise `HostIsURLError` where Host holds a URL rather than a host.
+
+    What people paste is often the browser's address bar -
+    `https://pve.example.com:8006/` - and the library took that for a host
+    called `https`, which nobody can resolve. Saying so on the field beats
+    a connection that fails for no visible reason.
+    """
+    if "://" in str(host) or "/" in str(host):
+        raise HostIsURLError
+
+
 def _update_interval_selector() -> selector.SelectSelector:
     """Offer the polling interval as a pick-list of seconds."""
     return selector.SelectSelector(
@@ -870,6 +887,7 @@ class ProxmoxVEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             ca_bundle = str(user_input.get(CONF_CA_BUNDLE, "")).strip()
 
             try:
+                refuse_url_as_host(host)
                 self._proxmox_client = ProxmoxClient(
                     self.hass,
                     host=host,
@@ -884,6 +902,8 @@ class ProxmoxVEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
                 await self._proxmox_client.build_client()
 
+            except HostIsURLError:
+                errors[CONF_HOST] = "host_is_url"
             except ProxmoxAuthError:
                 errors[CONF_USERNAME] = "auth_error"
             except CABundleError:
@@ -968,6 +988,7 @@ class ProxmoxVEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             if not errors:
                 try:
+                    refuse_url_as_host(host)
                     self._proxmox_client = ProxmoxClient(
                         self.hass,
                         host=host,
@@ -982,6 +1003,8 @@ class ProxmoxVEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
                     await self._proxmox_client.build_client()
 
+                except HostIsURLError:
+                    errors[CONF_HOST] = "host_is_url"
                 except ProxmoxAuthError:
                     errors[CONF_USERNAME] = "auth_error"
                 except CABundleError:

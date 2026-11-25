@@ -2,14 +2,16 @@
 # SPDX-License-Identifier: MIT
 """Test the Proxmox VE config flow."""
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
+import pytest
 from aioproxmox.exceptions import ProxmoxAuthError
 from homeassistant.config_entries import (
     SOURCE_USER,
 )
 from homeassistant.const import (
     CONF_HOST,
+    CONF_PASSWORD,
     CONF_PORT,
     CONF_USERNAME,
     CONF_VERIFY_SSL,
@@ -30,6 +32,8 @@ from custom_components.proxmoxve_custom.const import (
 )
 
 from .const import (
+    CURRENT_ENTRY_DATA,
+    CURRENT_ENTRY_VERSION,
     MOCK_GET_RESPONSE,
     USER_INPUT_OK,
     USER_INPUT_PORT_TOO_BIG,
@@ -297,3 +301,64 @@ async def test_an_empty_selection_without_discovery_asks_for_a_node(
 
     assert result["type"] == FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_NODES] == ["pve"]
+
+
+@pytest.mark.parametrize(
+    "host",
+    [
+        "https://pve.example.com",
+        "https://pve.example.com:8006/",
+        "https://pve.example.com:8006/#v1:0:18:4",
+        "pve.example.com/",
+    ],
+)
+async def test_flow_refuses_a_url_in_host(hass: HomeAssistant, host: str) -> None:
+    """
+    Test a URL in Host is refused on the field, before anything connects.
+
+    The library took `https://pve...` for a host called `https`; behind a
+    reverse proxy on 443, setup could only say it failed.
+    """
+    with patch(
+        "custom_components.proxmoxve_custom.ProxmoxClient.build_client",
+        new=AsyncMock(),
+    ) as build_client:
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": SOURCE_USER},
+            data=USER_INPUT_OK | {CONF_HOST: host},
+        )
+
+    assert result["type"] == FlowResultType.FORM
+    assert result["errors"] == {CONF_HOST: "host_is_url"}
+    build_client.assert_not_called()
+
+
+async def test_reconfigure_refuses_a_url_in_host(hass: HomeAssistant) -> None:
+    """Test reconfigure refuses a URL in Host the same way, and keeps the entry."""
+    entry = MockConfigEntry(
+        domain=DOMAIN, data=CURRENT_ENTRY_DATA, version=CURRENT_ENTRY_VERSION
+    )
+    entry.add_to_hass(hass)
+    result = await entry.start_reconfigure_flow(hass)
+
+    with patch(
+        "custom_components.proxmoxve_custom.ProxmoxClient.build_client",
+        new=AsyncMock(),
+    ) as build_client:
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={
+                CONF_HOST: "https://pve.example.com:8006/",
+                CONF_PORT: 8006,
+                CONF_USERNAME: CURRENT_ENTRY_DATA[CONF_USERNAME],
+                CONF_REALM: CURRENT_ENTRY_DATA[CONF_REALM],
+                CONF_PASSWORD: CURRENT_ENTRY_DATA[CONF_PASSWORD],
+                CONF_VERIFY_SSL: True,
+            },
+        )
+
+    assert result["type"] == FlowResultType.FORM
+    assert result["errors"] == {CONF_HOST: "host_is_url"}
+    build_client.assert_not_called()
+    assert entry.data[CONF_HOST] == CURRENT_ENTRY_DATA[CONF_HOST]

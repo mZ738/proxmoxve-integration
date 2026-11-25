@@ -21,6 +21,18 @@ logger:
 ```
 </details>
 
+## "Failed to connect" during setup
+
+**Host** takes the node's name or address only: `pve.example.com` or `192.0.2.10`, not `https://pve.example.com:8006/`. A URL is refused on the form; the port goes into **Port**.
+
+Behind a reverse proxy (Traefik, nginx and the like) the port is the proxy's, usually 443, not 8006. To see whether Home Assistant reaches the API at all, run this from the Home Assistant host with your own name and port:
+
+```bash
+curl -sS -o /dev/null -w "%{http_code}\n" https://<host>:<port>/api2/json/version
+```
+
+`401` means the API answers and only wants credentials, which is what the integration expects. A hang, a connection error or any other code points at the address, the port or the proxy.
+
 ## "Could not verify the SSL certificate"
 
 Proxmox signs every node's certificate with the cluster's own CA, which no public list knows. Three ways out, from safest to least safe:
