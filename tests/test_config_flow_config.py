@@ -4,6 +4,7 @@
 
 from unittest.mock import patch
 
+import pytest
 from aioproxmox.exceptions import ProxmoxAuthError
 from homeassistant.config_entries import (
     SOURCE_USER,
@@ -19,6 +20,7 @@ from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.proxmoxve_custom import DOMAIN
+from custom_components.proxmoxve_custom.config_flow import split_host
 from custom_components.proxmoxve_custom.const import (
     CONF_AUTO_DISCOVERY,
     CONF_DISKS_ENABLE,
@@ -297,3 +299,66 @@ async def test_an_empty_selection_without_discovery_asks_for_a_node(
 
     assert result["type"] == FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_NODES] == ["pve"]
+
+
+@pytest.mark.parametrize(
+    ("typed", "port", "expected"),
+    [
+        ("pve.example.com", 8006, ("pve.example.com", 8006)),
+        (" pve.example.com ", 8006, ("pve.example.com", 8006)),
+        ("https://pve.example.com", 443, ("pve.example.com", 443)),
+        ("https://pve.example.com/", 8006, ("pve.example.com", 8006)),
+        ("https://pve.example.com:8006/#v1:0:18:4", 443, ("pve.example.com", 8006)),
+        ("pve.example.com:8007", 8006, ("pve.example.com", 8007)),
+        ("192.0.2.10", 8006, ("192.0.2.10", 8006)),
+        ("https://[2001:db8::1]:8006/", 443, ("2001:db8::1", 8006)),
+        ("2001:db8::1", 8006, ("2001:db8::1", 8006)),
+        ("pve.example.com:abc", 8006, ("pve.example.com:abc", 8006)),
+        ("", 8006, ("", 8006)),
+    ],
+)
+def test_split_host(typed: str, port: int, expected: tuple[str, int]) -> None:
+    """Test a URL pasted into Host is taken apart, and anything else is left be."""
+    assert split_host(typed, port) == expected
+
+
+async def test_flow_takes_a_url_pasted_into_host(hass: HomeAssistant) -> None:
+    """
+    Test the entry gets the name and the URL's port, not the URL.
+
+    The library took `https://pve...` for a host called `https`; behind a
+    reverse proxy on 443, setup could only say it failed.
+    """
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+    user_input = USER_INPUT_USER_HOST | {
+        CONF_HOST: "https://pve.example.com:443/",
+        CONF_PORT: 8006,
+    }
+
+    with (
+        patch(
+            "aioproxmox.ProxmoxVE.request",
+            autospec=True,
+            return_value=MOCK_GET_RESPONSE,
+        ) as request,
+        patch(
+            "aioproxmox.ProxmoxHTTPAuth._get_new_tokens",
+            return_value=None,
+        ),
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], user_input=user_input
+        )
+        assert result["step_id"] == "expose"
+        assert request.call_args.args[0].base_url == (
+            "https://pve.example.com:443/api2/json"
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], user_input=USER_INPUT_SELECTION
+        )
+
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_HOST] == "pve.example.com"
+    assert result["data"][CONF_PORT] == 443
